@@ -6,7 +6,7 @@ class FiveTasksTests(unittest.TestCase):
   block=S.split('func _finish_battle(won: bool) -> void:',1)[1].split('func _show_quests()',1)[0]
   self.assertLess(block.index('var drop_tier := _roll_loot_tier()'),block.index('last_battle_result = "Победа!'))
  def test_reward_cap(self): self.assertIn('gold = mini(2000000000,gold + reward)',S)
- def test_region_in_battle(self): self.assertIn('REGIONS[chapter-1].name,22,GOLD',S)
+ def test_region_in_battle(self): self.assertIn('REGIONS[chapter-1].name,24,GOLD',S)
  def test_stage_in_battle(self): self.assertIn('Этап %d/20',S)
  def test_boss_label(self): self.assertIn('"БОСС" if stage == 20',S)
  def test_frontline_guard(self): self.assertIn('if party.size() >= 2:',S)
