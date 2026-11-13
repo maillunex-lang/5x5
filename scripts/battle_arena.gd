@@ -42,7 +42,7 @@ func set_units(next_units: Array, time_seconds: float) -> void:
    if recent_skills.size() > MAX_VISUAL_EVENTS:
     recent_skills.pop_front()
   if not reduced_effects and i < previous_hp.size() and hp < float(previous_hp[i]):
-   recent_impacts.append({"slot":i, "until":time_seconds + 0.42, "damage":int(previous_hp[i] - hp)})
+   recent_impacts.append({"slot":i, "until":time_seconds + 0.42, "damage":int(previous_hp[i] - hp), "critical":bool(unit.get("last_critical",false))})
    if recent_impacts.size() > MAX_VISUAL_EVENTS:
     recent_impacts.pop_front()
  previous_hp = now_hp
@@ -90,6 +90,16 @@ func _draw_landscape(w: float, h: float) -> void:
  for ring in range(3, 0, -1):
   draw_circle(Vector2(sun_x, sun_y), float(11 + ring * 12), Color(1.0, 0.77, 0.45, 0.045))
  draw_circle(Vector2(sun_x, sun_y), 12.0, Color("#f8d18a"))
+ if region_index % 4 == 2:
+  for star in range(11):
+   var sx := w * float((star * 37 + 11) % 100) / 100.0
+   var sy := h * float((star * 17 + 9) % 29) / 100.0
+   draw_circle(Vector2(sx,sy), 1.1, Color("#cde7ff",0.65))
+ if not reduced_effects and region_index % 3 == 1:
+  for drop in range(13):
+   var dx := fposmod(float(drop * 47) + elapsed * 12.0, w)
+   var dy := fposmod(float(drop * 31) + elapsed * 22.0, h * 0.65)
+   draw_line(Vector2(dx,dy), Vector2(dx-3.0,dy+9.0), Color("#a6d3ed",0.24),1.0)
  for ridge in range(3):
   var points := PackedVector2Array()
   points.append(Vector2(0, h))
@@ -177,7 +187,8 @@ func _draw_status_markers(unit: Dictionary) -> void:
 func _draw_impact(position: Vector2, effect: Dictionary) -> void:
  var remaining := clampf((float(effect["until"]) - elapsed) / 0.42, 0.0, 1.0)
  var radius := 7.0 + (1.0 - remaining) * 24.0
- draw_arc(position + Vector2(0,-10), radius, 0, TAU, 18, Color(1.0,0.83,0.52,remaining * 0.85), 2.5)
+ var tint := Color(1.0,0.38,0.28,remaining) if bool(effect.get("critical",false)) else Color(1.0,0.83,0.52,remaining * 0.85)
+ draw_arc(position + Vector2(0,-10), radius, 0, TAU, 18, tint, 4.0 if bool(effect.get("critical",false)) else 2.5)
  for i in range(5):
   var angle := float(i) * TAU / 5.0
   var direction := Vector2(cos(angle),sin(angle))
