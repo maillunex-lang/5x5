@@ -18,7 +18,7 @@ class V76Features(unittest.TestCase):
         self.assertIn('region_index % 4 == 2', ARENA)
         self.assertIn('if not reduced_effects and region_index % 3 == 1', ARENA)
     def test_mobile_navigation(self):
-        self.assertIn('nav_grid.columns = 2 if viewport_size.x < 420.0 else 3', MAIN)
+        self.assertIn('nav_grid.columns = 5', MAIN)
         self.assertIn('b.custom_minimum_size.y = 56', MAIN)
     def test_boss_telegraph(self):
         self.assertIn('actor.energy >= 75.0 and actor.energy < 100.0', MAIN)
