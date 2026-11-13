@@ -155,8 +155,16 @@ func _draw_hero(position: Vector2, index: int, side: int, unit: Dictionary) -> v
     hit_offset.x = sin((1.0 - remaining) * 27.0) * remaining * 5.0
     hit_offset.y = -remaining * 2.0
  var p := position + Vector2(0, bob) + hit_offset
+ # Lightweight breathing and weapon-ready pose, tied to battle time.
+ var breathe := sin(elapsed * 2.4 + float(index) * 0.9) * (0.0 if reduced_effects or not alive else 0.035)
+ var attack_pose := 0.0
+ if not reduced_effects and alive:
+  for effect in recent_skills:
+   if int(effect["slot"]) == index:
+    attack_pose = clampf((float(effect["until"]) - elapsed) / 0.6, 0.0, 1.0)
+ p.y -= attack_pose * 5.0
  _ellipse(position + Vector2(0, 17), Vector2(23, 6), Color(0, 0, 0, 0.35))
- draw_set_transform(p)
+ draw_set_transform(p, breathe + attack_pose * (0.12 if side == 0 else -0.12))
  var cape := PackedVector2Array([Vector2(-10,-12), Vector2(12,-12), Vector2(21,17), Vector2(-19,17)])
  draw_colored_polygon(cape, accent.darkened(0.45))
  draw_colored_polygon(PackedVector2Array([Vector2(-12, 1), Vector2(-9,-16), Vector2(9,-16), Vector2(12,1), Vector2(7,13), Vector2(-7,13)]), accent)
@@ -254,3 +262,26 @@ func _draw_skill(position: Vector2, effect: Dictionary) -> void:
   var angle := TAU * float(i) / float(MAX_SPARK_PARTICLES) + elapsed
   var direction := Vector2(cos(angle), sin(angle))
   draw_circle(position + Vector2(0, -10) + direction * radius, 2.5 * remaining, tint)
+ # Distinct silhouettes make each class readable even on a small phone.
+ var center := position + Vector2(0,-10)
+ match str(effect["role"]):
+  "Маг":
+   for ray in range(6):
+    var a := TAU * float(ray) / 6.0 + elapsed * 0.5
+    var d := Vector2(cos(a),sin(a))
+    draw_line(center + d * 9.0, center + d * radius, tint, 2.0, true)
+  "Поддержка":
+   draw_line(center + Vector2(-radius * 0.45,0), center + Vector2(radius * 0.45,0), tint, 4.0, true)
+   draw_line(center + Vector2(0,-radius * 0.45), center + Vector2(0,radius * 0.45), tint, 4.0, true)
+  "Танк":
+   draw_arc(center, radius * 0.75, PI * 0.1, PI * 0.9, 16, tint, 5.0, true)
+   draw_arc(center, radius * 0.75, PI * 1.1, PI * 1.9, 16, tint, 5.0, true)
+  "Убийца":
+   draw_line(center + Vector2(-radius,-radius * 0.4), center + Vector2(radius,radius * 0.4), tint, 3.0, true)
+   draw_line(center + Vector2(-radius,radius * 0.4), center + Vector2(radius,-radius * 0.4), tint, 3.0, true)
+  "Стрелок":
+   draw_arc(center, radius * 0.7, 0.0, TAU, 24, tint, 1.5, true)
+   draw_line(center + Vector2(-radius,0),center + Vector2(radius,0),tint,1.5,true)
+  "Босс":
+   draw_arc(center, radius * 1.15, 0.0, TAU, 24, tint, 5.0, true)
+   draw_circle(center, 7.0 * remaining, tint)
