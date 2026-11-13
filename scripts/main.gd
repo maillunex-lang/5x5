@@ -93,6 +93,7 @@ var completed_campaign := false
 var auto_repeat := false
 var victory_count := 0
 var arena_redraw_accumulator := 0.0
+var battle_hud_accumulator := 0.0
 # v1.1–v1.5: persistent equipment, boss rewards, daily tasks, achievements, UX.
 const EQUIPMENT := [
  {"name":"Клинок Агидели", "slot":"Оружие", "atk":8, "hp":0, "cost":220},
@@ -485,6 +486,8 @@ func _show_heroes() -> void:
   _label(info_column,"Навык: %s" % h.skill,14,GOLD)
   _label(info_column,"Мастерство: %d/5" % int(hero_mastery[i]),14,GOLD)
   _label(info_column,"Бонус мастерства: +%d HP · +%d атаки" % [int(hero_mastery[i]) * 12,int(hero_mastery[i]) * 3],13,MUTED)
+  if int(hero_mastery[i]) < 5:
+   _label(info_column,"Следующий ранг: +12 HP · +3 атаки",13,Color("#8de4b9"))
   var mastery_button := _button("Улучшить · %d зол." % (150 * (int(hero_mastery[i]) + 1)))
   mastery_button.disabled = int(hero_mastery[i]) >= 5 or gold < 150 * (int(hero_mastery[i]) + 1)
   mastery_button.pressed.connect(_upgrade_hero_mastery.bind(i))
@@ -507,6 +510,7 @@ func _show_heroes() -> void:
  _label(upgrade,"ОБУЧЕНИЕ ГЕРОЕВ",20,GOLD)
  var cost := 100 * level
  _label(upgrade,"Уровень отряда: %d • Цена: %d золота" % [level,cost],17)
+ _label(upgrade,"Следующий уровень: +15 HP и +3 атаки каждому герою",14,Color("#8de4b9"))
  var equipment_button := _button("СНАРЯЖЕНИЕ ГЕРОЕВ")
  equipment_button.pressed.connect(_navigate.bind("equipment"))
  upgrade.add_child(equipment_button)
@@ -642,6 +646,7 @@ func _start_battle() -> void:
  battle_origin_stage = stage
  tick = 0.0
  arena_redraw_accumulator = 0.0
+ battle_hud_accumulator = 0.0
  if arena != null:
   arena.call("configure", chapter - 1, party.map(func(hero_id: int) -> String: return str(HEROES[hero_id].role)))
   arena.set("reduced_effects", reduced_effects)
@@ -704,6 +709,11 @@ func _process(delta: float) -> void:
  if arena != null and (arena_redraw_accumulator >= (ARENA_UPDATE_INTERVAL_REDUCED if reduced_effects else ARENA_UPDATE_INTERVAL) or not active):
   arena.call("set_units", units, battle_time)
   arena_redraw_accumulator = 0.0
+ # v9.5: throttle UI text and health bars to 10 Hz, independent of simulation.
+ battle_hud_accumulator += delta
+ if battle_hud_accumulator < (ARENA_UPDATE_INTERVAL_REDUCED if reduced_effects else ARENA_UPDATE_INTERVAL) and active:
+  return
+ battle_hud_accumulator = 0.0
  _update_bars()
  if battle_status != null and active:
   battle_status.text = "Автобой • %d / 90 сек" % mini(90,int(battle_time))
@@ -772,7 +782,18 @@ func _combat_tick(dt: float) -> void:
    if int(enemy.slot) < 2:
     frontline.append(enemy)
   var pool: Array = candidates if actor.role == "Убийца" or frontline.is_empty() else frontline
-  target = pool[rng.randi_range(0,pool.size()-1)]
+  # v9.1: predictable focus-fire and backline assassination.
+  # Sort by current HP fraction; ties resolve by slot for replayable results.
+  var chosen: Dictionary = pool[0]
+  if actor.role == "Убийца":
+   for candidate in candidates:
+    if int(candidate.slot) >= 2 and (int(chosen.slot) < 2 or float(candidate.hp) / maxf(1.0,float(candidate.max_hp)) < float(chosen.hp) / maxf(1.0,float(chosen.max_hp))):
+     chosen = candidate
+  else:
+   for candidate in pool:
+    if float(candidate.hp) / maxf(1.0,float(candidate.max_hp)) < float(chosen.hp) / maxf(1.0,float(chosen.max_hp)):
+     chosen = candidate
+  target = chosen
   if actor.side == 0 and actor.role == "Поддержка" and actor.energy >= 60.0:
    var ally: Dictionary = actor
    for possible in units:
@@ -821,6 +842,8 @@ func _combat_tick(dt: float) -> void:
    damage = int(float(damage) * 0.85)
   if actor.side == 0 and actor.role == "Маг" and actor.energy >= 70.0:
    damage = int(float(damage) * 1.35)
+  # v9.2: guard against damage spikes from stacked skill modifiers.
+  damage = clampi(damage, 1, maxi(1,int(actor.atk) * 5))
   var critical_hit := rng.randf() < 0.12
   if critical_hit:
    damage = int(float(damage)*1.5)
@@ -849,6 +872,7 @@ func _combat_tick(dt: float) -> void:
     8: # Auriel: a small protective blessing.
      if rng.randf() < 0.2:
       actor.shield = mini(int(float(actor.max_hp) / 3.0), int(actor.shield) + 12)
+  damage = clampi(damage, 1, maxi(1,int(actor.atk) * 8))
   var absorbed := mini(int(target.shield), damage)
   target.shield = maxi(0, int(target.shield) - absorbed)
   damage -= absorbed
@@ -1043,6 +1067,8 @@ func _show_expeditions() -> void:
   var remaining := maxi(0,EXPEDITION_SECONDS - maxi(0, int(Time.get_unix_time_from_system()) - expedition_start))
   _label(p,"Регион: %s" % REGIONS[expedition_region].name,18)
   _label(p,"Осталось: %d мин" % int(ceil(float(remaining)/60.0)),17)
+  _progress_meter(p,EXPEDITION_SECONDS - remaining,EXPEDITION_SECONDS,Color("#8de4b9"))
+  _label(p,"Награда по завершении: %d золота и 1 реликвия" % (100 + expedition_region * 35),14,GOLD)
   var claim := _button("ЗАБРАТЬ ДОБЫЧУ" if remaining == 0 else "ЭКСПЕДИЦИЯ ИДЁТ")
   claim.disabled = remaining > 0
   claim.pressed.connect(_claim_expedition)
