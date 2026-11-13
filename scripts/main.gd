@@ -66,6 +66,7 @@ var nav_grid: GridContainer
 var nav_buttons: Dictionary = {}
 var vip_expires_at := 0
 var vip_trial_claimed := false
+var vip_status_refresh_accumulator := 0.0
 var hero_header: Label
 var hud: Label
 var log_label: Label
@@ -336,6 +337,15 @@ func _navigate(destination: String) -> void:
   "loot": _show_loot()
   "vip": _show_vip()
 
+func _process_vip_ui(delta: float) -> void:
+ # v9.7: update expiration badge once a second; do not rebuild the active combat screen.
+ vip_status_refresh_accumulator += delta
+ if vip_status_refresh_accumulator < 1.0:
+  return
+ vip_status_refresh_accumulator = 0.0
+ if hud != null:
+  _refresh_hud()
+
 func _refresh_hud() -> void:
  if hud != null:
   hud.text = "◈ %d   ✦ Ур.%d%s" % [gold, level, "   ★ VIP" if _vip_active() else ""]
@@ -364,6 +374,8 @@ func _show_map() -> void:
  var vip_button := _button("★ VIP АКТИВЕН" if _vip_active() else "★ VIP КЛУБ")
  vip_button.pressed.connect(_navigate.bind("vip"))
  banner.add_child(vip_button)
+ if vip_trial_claimed:
+  _label(banner,_vip_status_text(),13,GOLD if _vip_active() else MUTED)
  _label(banner,"ХРАНИТЕЛИ\nВЕЧНОСТИ",30,TEXT)
  _label(banner,"Глава %d  •  Этап %d/20" % [chapter,stage],16,GOLD)
  var hero_line := HBoxContainer.new()
@@ -695,6 +707,7 @@ func _start_battle() -> void:
  log_label.text = "Герои вступили в бой. Навыки срабатывают автоматически."
 
 func _process(delta: float) -> void:
+ _process_vip_ui(delta)
  if not active:
   return
  # Fixed-step simulation prevents frame-rate-dependent attack frequency.
@@ -1111,6 +1124,20 @@ func _claim_expedition() -> void:
 func _vip_active() -> bool:
  return vip_expires_at > 0 and int(Time.get_unix_time_from_system()) < vip_expires_at
 
+func _vip_remaining_seconds() -> int:
+ return maxi(0,vip_expires_at - int(Time.get_unix_time_from_system()))
+
+func _vip_status_text() -> String:
+ if _vip_active():
+  var seconds := _vip_remaining_seconds()
+  var days := int(seconds / 86400)
+  var hours := int((seconds % 86400) / 3600)
+  var minutes := int((seconds % 3600) / 60)
+  return "VIP активен • %d дн. %d ч. %d мин." % [days,hours,minutes]
+ if vip_trial_claimed:
+  return "Пробный VIP завершён"
+ return "VIP ожидает открытия"
+
 func _claim_vip_trial() -> void:
  # One local, free trial unlocked through normal gameplay. No purchase or real-money entitlement.
  if vip_trial_claimed or battle_wins < VIP_UNLOCK_WINS:
@@ -1125,15 +1152,15 @@ func _show_vip() -> void:
  _label(panel,"★  VIP КЛУБ ХРАНИТЕЛЕЙ",25,GOLD)
  _label(panel,"Бесплатный внутриигровой VIP, без покупок и усиления героев.",15,MUTED)
  if _vip_active():
-  var remaining := maxi(0,vip_expires_at - int(Time.get_unix_time_from_system()))
-  _label(panel,"★ VIP АКТИВЕН • осталось %d дн. %d ч." % [int(remaining / 86400),int((remaining % 86400) / 3600)],19,GOLD)
+  _label(panel,"★ " + _vip_status_text(),19,GOLD)
   _label(panel,"Привилегии: VIP-значок и быстрый доступ к полезным разделам.",15)
+  _label(panel,"Все игровые возможности доступны и без VIP.",13,MUTED)
   for entry in [{"text":"⚔  ЖУРНАЛ СРАЖЕНИЙ","screen":"journal"},{"text":"◆  СНАРЯЖЕНИЕ","screen":"equipment"},{"text":"✦  ЭКСПЕДИЦИИ","screen":"expeditions"},{"text":"☷  ЗАДАНИЯ","screen":"quests"}]:
    var shortcut := _button(entry.text)
    shortcut.pressed.connect(_navigate.bind(entry.screen))
    panel.add_child(shortcut)
  else:
-  _label(panel,"VIP неактивен",19,MUTED)
+  _label(panel,_vip_status_text(),19,MUTED)
   if not vip_trial_claimed:
    _label(panel,"Пробный VIP на 7 дней открывается после %d побед. Сейчас: %d/%d." % [VIP_UNLOCK_WINS,mini(VIP_UNLOCK_WINS,battle_wins),VIP_UNLOCK_WINS],16)
    _progress_meter(panel,battle_wins,VIP_UNLOCK_WINS,GOLD)
