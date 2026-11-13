@@ -62,6 +62,10 @@ func set_units(next_units: Array, time_seconds: float) -> void:
  recent_impacts = recent_impacts.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
  recent_skills = recent_skills.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
  attack_trails = attack_trails.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
+ if reduced_effects:
+  attack_trails.clear()
+  recent_skills.clear()
+  recent_impacts.clear()
  last_battle_time = time_seconds
  queue_redraw()
 
@@ -71,6 +75,7 @@ func _unit_position(index: int, w: float, h: float) -> Vector2:
  var col := slot % 3
  var row := int(slot / 3)
  var x := w * (0.20 + float(col) * 0.30) + (w * 0.15 if row == 1 else 0.0)
+ x += sin(float(slot) * 2.3) * w * 0.012
  var y := h * (0.37 if side == 1 else 0.72) + float(row) * h * 0.115
  return Vector2(x, y)
 
@@ -132,6 +137,11 @@ func _draw_landscape(w: float, h: float) -> void:
    draw_line(Vector2(x, y), Vector2(x + 9, y), Color("#8cc5d4", 0.35), 1.5)
   else:
    draw_line(Vector2(x, y), Vector2(x - 4, y - 11), Color("#80ae81", 0.42), 2.0)
+ if region_index % 4 == 0:
+  for stone in range(6):
+   var px := w * float(stone + 1) / 7.0
+   var py := h * (0.82 + float(stone % 3) * 0.04)
+   draw_circle(Vector2(px,py), 3.0 + float(stone % 2), ground.lightened(0.12))
  for i in range(9):
   var x := w * float(i + 1) / 10.0
   var y := h * (0.91 + float(i % 3) * 0.025)
@@ -144,6 +154,8 @@ func _draw_hero(position: Vector2, index: int, side: int, unit: Dictionary) -> v
  if side == 0 and index < hero_roles.size():
   role = str(hero_roles[index])
  var accent: Color = Color("#e98783") if side == 1 else Color(PALETTE[index % PALETTE.size()])
+ if role == "Босс":
+  accent = Color("#df8270")
  if not alive:
   accent = Color("#65717a")
  var bob := sin(elapsed * 3.4 + float(index) * 1.7) * (0.0 if reduced_effects else 2.5) if alive else 0.0
@@ -152,7 +164,7 @@ func _draw_hero(position: Vector2, index: int, side: int, unit: Dictionary) -> v
   for effect in recent_impacts:
    if int(effect["slot"]) == index:
     var remaining := clampf((float(effect["until"]) - elapsed) / 0.42, 0.0, 1.0)
-    hit_offset.x = sin((1.0 - remaining) * 27.0) * remaining * 5.0
+    hit_offset.x = sin((1.0 - remaining) * 27.0) * remaining * (7.0 if bool(effect.get("critical",false)) else 5.0)
     hit_offset.y = -remaining * 2.0
  var p := position + Vector2(0, bob) + hit_offset
  # Lightweight breathing and weapon-ready pose, tied to battle time.
@@ -163,12 +175,19 @@ func _draw_hero(position: Vector2, index: int, side: int, unit: Dictionary) -> v
    if int(effect["slot"]) == index:
     attack_pose = clampf((float(effect["until"]) - elapsed) / 0.6, 0.0, 1.0)
  p.y -= attack_pose * 5.0
+ if role == "Убийца":
+  p.x += attack_pose * (10.0 if side == 0 else -10.0)
+ elif role == "Танк":
+  p.y += attack_pose * 3.0
  _ellipse(position + Vector2(0, 17), Vector2(23, 6), Color(0, 0, 0, 0.35))
  draw_set_transform(p, breathe + attack_pose * (0.12 if side == 0 else -0.12))
  var cape := PackedVector2Array([Vector2(-10,-12), Vector2(12,-12), Vector2(21,17), Vector2(-19,17)])
  draw_colored_polygon(cape, accent.darkened(0.45))
  draw_colored_polygon(PackedVector2Array([Vector2(-12, 1), Vector2(-9,-16), Vector2(9,-16), Vector2(12,1), Vector2(7,13), Vector2(-7,13)]), accent)
  draw_circle(Vector2(0,-22), 8, Color("#e9c2a0") if alive else Color("#9d9993"))
+ if role == "Босс" and alive:
+  draw_colored_polygon(PackedVector2Array([Vector2(-10,-27),Vector2(-18,-42),Vector2(-4,-31)]),Color("#dfb375"))
+  draw_colored_polygon(PackedVector2Array([Vector2(10,-27),Vector2(18,-42),Vector2(4,-31)]),Color("#dfb375"))
  draw_arc(Vector2(0,-25), 8.5, PI, TAU, 9, accent.darkened(0.35), 4)
  if role == "Танк":
   draw_circle(Vector2(-15,0), 9, Color("#718c9e"))
@@ -202,11 +221,12 @@ func _draw_status_markers(unit: Dictionary) -> void:
  var marker_x := -17.0
  if int(unit.get("shield", 0)) > 0:
   draw_arc(Vector2(0, -17), 27.0, PI * 0.1, PI * 0.9, 20, Color("#75caff", 0.95), 2.8)
+  draw_arc(Vector2(0,-17), 23.0, PI * 1.1, PI * 1.9, 18, Color("#75caff",0.55), 2.0)
   draw_rect(Rect2(marker_x, -51, 9, 7), Color("#57bdf4"))
   draw_line(Vector2(marker_x + 2, -48), Vector2(marker_x + 4, -45), Color("#f0fcff"), 1.5)
   marker_x += 12.0
  if int(unit.get("poison", 0)) > 0:
-  draw_circle(Vector2(marker_x + 4, -48), 4.0, Color("#a8e76b"))
+  draw_circle(Vector2(marker_x + 4, -48), 4.0 + sin(elapsed * 5.0) * 0.6, Color("#a8e76b"))
   draw_circle(Vector2(marker_x + 2, -49), 1.1, Color("#345329"))
   marker_x += 12.0
  if int(unit.get("stun", 0)) > 0:
@@ -220,13 +240,16 @@ func _draw_attack_trail(position: Vector2, enemy_target: bool, effect: Dictionar
  var head := origin.lerp(position + Vector2(0,-9), 1.0 - remaining)
  var tail := origin.lerp(head, 0.55)
  var color := Color("#ffd77a") if bool(effect.get("critical",false)) else Color("#a9e9ff")
+ if not bool(effect.get("critical",false)) and enemy_target:
+  color = Color("#f7ad9a")
  color.a = remaining * 0.85
  draw_line(tail, head, color, 3.5 if bool(effect.get("critical",false)) else 2.0, true)
  draw_circle(head, 3.0 if bool(effect.get("critical",false)) else 2.0, color)
 
 func _draw_impact(position: Vector2, effect: Dictionary) -> void:
  var remaining := clampf((float(effect["until"]) - elapsed) / 0.42, 0.0, 1.0)
- var radius := 7.0 + (1.0 - remaining) * 24.0
+ var damage_scale := clampf(sqrt(float(effect.get("damage", 1))) / 16.0, 0.8, 1.6)
+ var radius := (7.0 + (1.0 - remaining) * 24.0) * damage_scale
  var tint := Color(1.0,0.38,0.28,remaining) if bool(effect.get("critical",false)) else Color(1.0,0.83,0.52,remaining * 0.85)
  draw_arc(position + Vector2(0,-10), radius, 0, TAU, 18, tint, 4.0 if bool(effect.get("critical",false)) else 2.5)
  if bool(effect.get("critical",false)):
