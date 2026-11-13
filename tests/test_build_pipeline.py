@@ -29,8 +29,8 @@ class RuntimeBuildSafetyTests(unittest.TestCase):
     def test_arena_shadow_restores_unit_transform(self):
         arena = (ROOT / 'scripts/battle_arena.gd').read_text()
         self.assertIn('_ellipse(position + Vector2(0, 17)', arena)
-        self.assertIn('draw_set_transform(p)', arena)
-        self.assertLess(arena.index('_ellipse(position + Vector2(0, 17)'), arena.index('draw_set_transform(p)'))
+        self.assertIn('draw_set_transform(p, breathe + attack_pose', arena)
+        self.assertLess(arena.index('_ellipse(position + Vector2(0, 17)'), arena.index('draw_set_transform(p, breathe + attack_pose'))
         self.assertIn('draw_set_transform(Vector2.ZERO)', arena)
     def test_ci_exports_and_uploads_apk(self):
         ci = (ROOT / '.github/workflows/godot-check.yml').read_text()
