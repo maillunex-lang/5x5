@@ -13,12 +13,16 @@ var previous_hp: Array = []
 var reduced_effects := false
 var recent_skills: Array = []
 var previous_energy: Array = []
+var attack_trails: Array = []
+var last_battle_time := 0.0
 
 func reset_battle() -> void:
  previous_hp.clear()
  recent_impacts.clear()
  recent_skills.clear()
+ attack_trails.clear()
  previous_energy.clear()
+ last_battle_time = 0.0
  snapshot.clear()
  elapsed = 0.0
  queue_redraw()
@@ -42,7 +46,13 @@ func set_units(next_units: Array, time_seconds: float) -> void:
    if recent_skills.size() > MAX_VISUAL_EVENTS:
     recent_skills.pop_front()
   if not reduced_effects and i < previous_hp.size() and hp < float(previous_hp[i]):
-   recent_impacts.append({"slot":i, "until":time_seconds + 0.42, "damage":int(previous_hp[i] - hp), "critical":bool(unit.get("last_critical",false))})
+   var critical := bool(unit.get("last_critical",false))
+   recent_impacts.append({"slot":i, "until":time_seconds + 0.42, "damage":int(previous_hp[i] - hp), "critical":critical})
+   # A brief directional streak gives attacks a visible trajectory without sprites.
+   # It is a combat cue, not a claim about the precise attacking unit.
+   attack_trails.append({"slot":i, "until":time_seconds + 0.28, "critical":critical})
+   if attack_trails.size() > MAX_VISUAL_EVENTS:
+    attack_trails.pop_front()
    if recent_impacts.size() > MAX_VISUAL_EVENTS:
     recent_impacts.pop_front()
  previous_hp = now_hp
@@ -51,6 +61,8 @@ func set_units(next_units: Array, time_seconds: float) -> void:
  elapsed = time_seconds
  recent_impacts = recent_impacts.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
  recent_skills = recent_skills.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
+ attack_trails = attack_trails.filter(func(effect: Dictionary) -> bool: return float(effect["until"]) > elapsed)
+ last_battle_time = time_seconds
  queue_redraw()
 
 func _unit_position(index: int, w: float, h: float) -> Vector2:
@@ -76,6 +88,8 @@ func _draw() -> void:
    _draw_hero(position, index, side, unit)
  if reduced_effects:
   return
+ for effect in attack_trails:
+  _draw_attack_trail(_unit_position(int(effect["slot"]), w, h), int(effect["slot"]) >= 5, effect)
  for effect in recent_impacts:
   _draw_impact(_unit_position(int(effect["slot"]), w, h), effect)
  for effect in recent_skills:
@@ -133,7 +147,14 @@ func _draw_hero(position: Vector2, index: int, side: int, unit: Dictionary) -> v
  if not alive:
   accent = Color("#65717a")
  var bob := sin(elapsed * 3.4 + float(index) * 1.7) * (0.0 if reduced_effects else 2.5) if alive else 0.0
- var p := position + Vector2(0, bob)
+ var hit_offset := Vector2.ZERO
+ if not reduced_effects:
+  for effect in recent_impacts:
+   if int(effect["slot"]) == index:
+    var remaining := clampf((float(effect["until"]) - elapsed) / 0.42, 0.0, 1.0)
+    hit_offset.x = sin((1.0 - remaining) * 27.0) * remaining * 5.0
+    hit_offset.y = -remaining * 2.0
+ var p := position + Vector2(0, bob) + hit_offset
  _ellipse(position + Vector2(0, 17), Vector2(23, 6), Color(0, 0, 0, 0.35))
  draw_set_transform(p)
  var cape := PackedVector2Array([Vector2(-10,-12), Vector2(12,-12), Vector2(21,17), Vector2(-19,17)])
@@ -184,11 +205,24 @@ func _draw_status_markers(unit: Dictionary) -> void:
   var spark := 0.8 + 0.2 * sin(elapsed * 9.0)
   draw_colored_polygon(PackedVector2Array([Vector2(marker_x + 3,-54), Vector2(marker_x + 8,-49), Vector2(marker_x + 4,-49), Vector2(marker_x + 6,-43), Vector2(marker_x,-49), Vector2(marker_x + 3,-49)]), Color(1.0, 0.87, 0.32, spark))
 
+func _draw_attack_trail(position: Vector2, enemy_target: bool, effect: Dictionary) -> void:
+ var remaining := clampf((float(effect["until"]) - elapsed) / 0.28, 0.0, 1.0)
+ var direction := Vector2(0, -1) if enemy_target else Vector2(0, 1)
+ var origin := position - direction * 38.0
+ var head := origin.lerp(position + Vector2(0,-9), 1.0 - remaining)
+ var tail := origin.lerp(head, 0.55)
+ var color := Color("#ffd77a") if bool(effect.get("critical",false)) else Color("#a9e9ff")
+ color.a = remaining * 0.85
+ draw_line(tail, head, color, 3.5 if bool(effect.get("critical",false)) else 2.0, true)
+ draw_circle(head, 3.0 if bool(effect.get("critical",false)) else 2.0, color)
+
 func _draw_impact(position: Vector2, effect: Dictionary) -> void:
  var remaining := clampf((float(effect["until"]) - elapsed) / 0.42, 0.0, 1.0)
  var radius := 7.0 + (1.0 - remaining) * 24.0
  var tint := Color(1.0,0.38,0.28,remaining) if bool(effect.get("critical",false)) else Color(1.0,0.83,0.52,remaining * 0.85)
  draw_arc(position + Vector2(0,-10), radius, 0, TAU, 18, tint, 4.0 if bool(effect.get("critical",false)) else 2.5)
+ if bool(effect.get("critical",false)):
+  draw_arc(position + Vector2(0,-10), radius * 1.25, 0, TAU, 20, Color(1.0,0.74,0.27,remaining * 0.75), 2.0)
  for i in range(5):
   var angle := float(i) * TAU / 5.0
   var direction := Vector2(cos(angle),sin(angle))
