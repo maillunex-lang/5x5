@@ -289,7 +289,10 @@ func _navigate(destination: String) -> void:
  match destination:
   "map": _show_map()
   "heroes": _show_heroes()
-  "battle": _show_battle()
+  "battle":
+   _show_battle()
+   if not active and party.size() == 5:
+    _start_battle()
   "quests": _show_quests()
   "settings": _show_settings()
   "expeditions": _show_expeditions()
@@ -524,6 +527,22 @@ func _show_battle() -> void:
  if stage == 20:
   _label(p,"⚠ Босс: усиленный удар при накоплении энергии. На 50% HP включает щит и ускоряется. Защитники впереди!",14,Color("#f5c391"))
  battle_status = _label(p,"Подготовка к бою",19 if accessibility_large_text else 17,MUTED)
+ var actions := _panel()
+ battle_button = _button("⚔  ПОВТОРИТЬ БОЙ")
+ battle_button.pressed.connect(_start_battle)
+ actions.add_child(battle_button)
+ var speed_btn := _button("Скорость боя ×%d" % int(combat_speed))
+ speed_btn.pressed.connect(_toggle_speed.bind(speed_btn))
+ actions.add_child(speed_btn)
+ log_label = _label(actions,"Соберите пять героев и начните автоматическое сражение.",17 if accessibility_large_text else 15,MUTED)
+ battle_summary = _label(actions,"Союзники 5/5 · Противники 5/5",17 if accessibility_large_text else 15,GOLD)
+ if party.size() >= 2:
+  _label(actions,"Передняя линия: %s, %s" % [HEROES[party[0]].name,HEROES[party[1]].name],14,GOLD)
+ if last_battle_result != "":
+  _label(actions,last_battle_result,14,GOLD)
+ if active:
+  battle_button.disabled = true
+
  var field := _panel()
  _label(field,"ПРОТИВНИКИ",16,Color("#ed9a9a"))
  arena = Control.new()
@@ -560,21 +579,6 @@ func _show_battle() -> void:
   if side == 1:
    _label(field,"                 ⚡  VS  ⚡",18,GOLD)
  _label(field,"ВАШИ ГЕРОИ",16,Color("#8de4b9"))
- var actions := _panel()
- battle_button = _button("⚔  В БОЙ!")
- battle_button.pressed.connect(_start_battle)
- actions.add_child(battle_button)
- var speed_btn := _button("Скорость боя ×%d" % int(combat_speed))
- speed_btn.pressed.connect(_toggle_speed.bind(speed_btn))
- actions.add_child(speed_btn)
- log_label = _label(actions,"Соберите пять героев и начните автоматическое сражение.",17 if accessibility_large_text else 15,MUTED)
- battle_summary = _label(actions,"Союзники 5/5 · Противники 5/5",17 if accessibility_large_text else 15,GOLD)
- if party.size() >= 2:
-  _label(actions,"Передняя линия: %s, %s" % [HEROES[party[0]].name,HEROES[party[1]].name],14,GOLD)
- if last_battle_result != "":
-  _label(actions,last_battle_result,14,GOLD)
- if active:
-  battle_button.disabled = true
 
 func _toggle_speed(button: Button) -> void:
  combat_speed = 2.0 if combat_speed == 1.0 else 4.0 if combat_speed == 2.0 else 1.0
@@ -626,6 +630,8 @@ func _start_battle() -> void:
   var enemy_type := i if i < 2 else 2 + ((i - 2 + stage + chapter) % 3)
   units.append({"side":1,"slot":i,"name":str(REGIONS[chapter-1].boss) if is_boss else enemy_names[enemy_type],"hp":hp,"max_hp":hp,"atk":maxi(1,int(float(10+stage+chapter*3+(chapter*4 if is_boss else 0)) * BALANCE_ATK_SCALE)),"speed":0.8+float(i%3)*0.1,"energy":0.0,"cooldown":0.0,"role":("Босс" if is_boss else enemy_roles[enemy_type]),"hero_id":-1,"shield":0,"poison":0,"stun":0,"phase":1})
  battle_button.disabled = true
+ if battle_status != null:
+  battle_status.text = "Автобой начался • 0 / 90 сек"
  log_label.text = "Герои вступили в бой. Навыки срабатывают автоматически."
 
 func _process(delta: float) -> void:
