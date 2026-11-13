@@ -15,6 +15,8 @@ const MAX_BATTLE_EVENTS := 8
 const ARENA_UPDATE_INTERVAL := 0.1
 const ARENA_UPDATE_INTERVAL_REDUCED := 0.2
 const EXPEDITION_SECONDS := 7200
+const VIP_TRIAL_SECONDS := 7 * 24 * 3600
+const VIP_UNLOCK_WINS := 5
 const HEROES := [
  {"name":"Айдар", "role":"Танк", "faction":"Рассвет", "symbol":"🛡", "hp":225, "atk":15, "speed":0.85, "skill":"Щит"},
  {"name":"Айсылу", "role":"Стрелок", "faction":"Лес", "symbol":"🏹", "hp":112, "atk":29, "speed":1.3, "skill":"Точный выстрел"},
@@ -62,6 +64,8 @@ var body: VBoxContainer
 var safe_container: MarginContainer
 var nav_grid: GridContainer
 var nav_buttons: Dictionary = {}
+var vip_expires_at := 0
+var vip_trial_claimed := false
 var hero_header: Label
 var hud: Label
 var log_label: Label
@@ -330,10 +334,11 @@ func _navigate(destination: String) -> void:
   "journal": _show_journal()
   "regions": _show_region_rewards()
   "loot": _show_loot()
+  "vip": _show_vip()
 
 func _refresh_hud() -> void:
  if hud != null:
-  hud.text = "◈ %d   ✦ Ур.%d" % [gold, level]
+  hud.text = "◈ %d   ✦ Ур.%d%s" % [gold, level, "   ★ VIP" if _vip_active() else ""]
 
 func _show_tutorial() -> void:
  if active:
@@ -356,6 +361,9 @@ func _finish_tutorial() -> void:
 func _show_map() -> void:
  var banner := _panel()
  _label(banner,"✦  ЛЕГЕНДЫ ЮЖНОГО УРАЛА",14,GOLD)
+ var vip_button := _button("★ VIP АКТИВЕН" if _vip_active() else "★ VIP КЛУБ")
+ vip_button.pressed.connect(_navigate.bind("vip"))
+ banner.add_child(vip_button)
  _label(banner,"ХРАНИТЕЛИ\nВЕЧНОСТИ",30,TEXT)
  _label(banner,"Глава %d  •  Этап %d/20" % [chapter,stage],16,GOLD)
  var hero_line := HBoxContainer.new()
@@ -1100,9 +1108,49 @@ func _claim_expedition() -> void:
  _save_data()
  _navigate("expeditions")
 
+func _vip_active() -> bool:
+ return vip_expires_at > 0 and int(Time.get_unix_time_from_system()) < vip_expires_at
+
+func _claim_vip_trial() -> void:
+ # One local, free trial unlocked through normal gameplay. No purchase or real-money entitlement.
+ if vip_trial_claimed or battle_wins < VIP_UNLOCK_WINS:
+  return
+ vip_trial_claimed = true
+ vip_expires_at = int(Time.get_unix_time_from_system()) + VIP_TRIAL_SECONDS
+ _save_data()
+ _navigate("vip")
+
+func _show_vip() -> void:
+ var panel := _panel()
+ _label(panel,"★  VIP КЛУБ ХРАНИТЕЛЕЙ",25,GOLD)
+ _label(panel,"Бесплатный внутриигровой VIP, без покупок и усиления героев.",15,MUTED)
+ if _vip_active():
+  var remaining := maxi(0,vip_expires_at - int(Time.get_unix_time_from_system()))
+  _label(panel,"★ VIP АКТИВЕН • осталось %d дн. %d ч." % [int(remaining / 86400),int((remaining % 86400) / 3600)],19,GOLD)
+  _label(panel,"Привилегии: VIP-значок и быстрый доступ к полезным разделам.",15)
+  for entry in [{"text":"⚔  ЖУРНАЛ СРАЖЕНИЙ","screen":"journal"},{"text":"◆  СНАРЯЖЕНИЕ","screen":"equipment"},{"text":"✦  ЭКСПЕДИЦИИ","screen":"expeditions"},{"text":"☷  ЗАДАНИЯ","screen":"quests"}]:
+   var shortcut := _button(entry.text)
+   shortcut.pressed.connect(_navigate.bind(entry.screen))
+   panel.add_child(shortcut)
+ else:
+  _label(panel,"VIP неактивен",19,MUTED)
+  if not vip_trial_claimed:
+   _label(panel,"Пробный VIP на 7 дней открывается после %d побед. Сейчас: %d/%d." % [VIP_UNLOCK_WINS,mini(VIP_UNLOCK_WINS,battle_wins),VIP_UNLOCK_WINS],16)
+   _progress_meter(panel,battle_wins,VIP_UNLOCK_WINS,GOLD)
+   var activate := _button("★  АКТИВИРОВАТЬ VIP НА 7 ДНЕЙ")
+   activate.disabled = battle_wins < VIP_UNLOCK_WINS
+   activate.pressed.connect(_claim_vip_trial)
+   panel.add_child(activate)
+  else:
+   _label(panel,"Пробный VIP уже использован. Заработанный прогресс сохраняется.",15)
+ _label(panel,"Оплата, подписки и автоматическое продление не подключены.",14,MUTED)
+
 func _show_settings() -> void:
  var p := _panel()
  _label(p,"⚙ НАСТРОЙКИ",22,GOLD)
+ var vip_button := _button("★  VIP КЛУБ")
+ vip_button.pressed.connect(_navigate.bind("vip"))
+ p.add_child(vip_button)
  _label(p,"Автоматический бой · Портретный экран · Локальный прототип",16)
  var fx := _button("Эффекты: экономный режим" if reduced_effects else "Эффекты: обычный режим")
  fx.pressed.connect(_toggle_effects)
@@ -1125,7 +1173,7 @@ func _toggle_sound() -> void:
  _navigate("settings")
 
 func _save_data() -> void:
- var payload := JSON.stringify({"version":SAVE_VERSION,"gold":gold,"level":level,"chapter":chapter,"stage":stage,"party":party,"last_claim":last_claim,"battle_wins":battle_wins,"quests_claimed":quests_claimed,"sound_enabled":sound_enabled,"expedition_start":expedition_start,"expedition_region":expedition_region,"expedition_claims":expedition_claims,"relics":relics,"best_chapter":best_chapter,"best_streak":best_streak,"current_streak":current_streak,"tutorial_seen":tutorial_seen,"completed_campaign":completed_campaign,"owned_equipment":owned_equipment,"equipped":equipped,"boss_kills":boss_kills,"daily_day":daily_day,"daily_wins":daily_wins,"daily_claimed":daily_claimed,"achievement_claims":achievement_claims,"reduced_effects":reduced_effects,"formation_index":formation_index,"talent_points":talent_points,"battle_history":battle_history,"discovered_bosses":discovered_bosses,"claimed_region_rewards":claimed_region_rewards,"accessibility_large_text":accessibility_large_text,"expedition_total_gold":expedition_total_gold,"codex_seen":codex_seen,"campaign_first_clear_rewards":campaign_first_clear_rewards,"loot_inventory":loot_inventory,"loot_total":loot_total,"regional_wins":regional_wins,"regional_contracts_claimed":regional_contracts_claimed,"forge_level":forge_level,"hero_mastery":hero_mastery,"region_affinity":region_affinity,"equipment_reforges":equipment_reforges})
+ var payload := JSON.stringify({"version":SAVE_VERSION,"gold":gold,"level":level,"chapter":chapter,"stage":stage,"party":party,"last_claim":last_claim,"battle_wins":battle_wins,"quests_claimed":quests_claimed,"vip_expires_at":vip_expires_at,"vip_trial_claimed":vip_trial_claimed,"sound_enabled":sound_enabled,"expedition_start":expedition_start,"expedition_region":expedition_region,"expedition_claims":expedition_claims,"relics":relics,"best_chapter":best_chapter,"best_streak":best_streak,"current_streak":current_streak,"tutorial_seen":tutorial_seen,"completed_campaign":completed_campaign,"owned_equipment":owned_equipment,"equipped":equipped,"boss_kills":boss_kills,"daily_day":daily_day,"daily_wins":daily_wins,"daily_claimed":daily_claimed,"achievement_claims":achievement_claims,"reduced_effects":reduced_effects,"formation_index":formation_index,"talent_points":talent_points,"battle_history":battle_history,"discovered_bosses":discovered_bosses,"claimed_region_rewards":claimed_region_rewards,"accessibility_large_text":accessibility_large_text,"expedition_total_gold":expedition_total_gold,"codex_seen":codex_seen,"campaign_first_clear_rewards":campaign_first_clear_rewards,"loot_inventory":loot_inventory,"loot_total":loot_total,"regional_wins":regional_wins,"regional_contracts_claimed":regional_contracts_claimed,"forge_level":forge_level,"hero_mastery":hero_mastery,"region_affinity":region_affinity,"equipment_reforges":equipment_reforges})
  # Preserve the previous valid save before writing the new one.
  if FileAccess.file_exists(SAVE_PATH):
   var old := FileAccess.open(SAVE_PATH,FileAccess.READ)
@@ -1279,6 +1327,8 @@ func _load_data() -> void:
  _reset_daily_if_needed()
  battle_wins = maxi(0,int(data.get("battle_wins",0)))
  quests_claimed = maxi(0,int(data.get("quests_claimed",0)))
+ vip_expires_at = clampi(int(data.get("vip_expires_at",0)),0,2000000000)
+ vip_trial_claimed = bool(data.get("vip_trial_claimed",false))
  sound_enabled = bool(data.get("sound_enabled",true))
  level = clampi(int(data.get("level",1)),1,240)
  chapter = clampi(int(data.get("chapter",1)),1,12)
