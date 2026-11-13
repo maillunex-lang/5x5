@@ -185,14 +185,14 @@ func _ready() -> void:
  hud.add_theme_color_override("font_color", GOLD)
  root.add_child(hud)
  nav_grid = GridContainer.new()
- nav_grid.columns = 3
+ nav_grid.columns = 2 if get_viewport_rect().size.x < 420.0 else 3
  nav_grid.add_theme_constant_override("h_separation", 6)
  nav_grid.add_theme_constant_override("v_separation", 6)
  root.add_child(nav_grid)
  for item in [{"t":"Карта","s":"map"},{"t":"Герои","s":"heroes"},{"t":"Бой","s":"battle"},{"t":"Поход","s":"expeditions"},{"t":"Снаряж.","s":"equipment"},{"t":"Опции","s":"settings"}]:
   var b := _button(item.t)
   b.add_theme_font_size_override("font_size", 14)
-  b.custom_minimum_size.y = 48
+  b.custom_minimum_size.y = 56
   b.clip_text = true
   b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
   b.pressed.connect(_navigate.bind(item.s))
@@ -230,6 +230,8 @@ func _update_safe_area() -> void:
  safe_container.add_theme_constant_override("margin_bottom", bottom)
  safe_container.add_theme_constant_override("margin_left", left)
  safe_container.add_theme_constant_override("margin_right", right)
+ if nav_grid != null:
+  nav_grid.columns = 2 if viewport_size.x < 420.0 else 3
 
 func _panel() -> VBoxContainer:
  var panel := PanelContainer.new()
@@ -519,6 +521,8 @@ func _show_battle() -> void:
  var p := _panel()
  _label(p,"⚔  БИТВА · %s" % REGIONS[chapter-1].name,22,GOLD)
  _label(p,"Регион %d/12 · Этап %d/20 · %s" % [chapter,stage,"БОСС" if stage == 20 else "Обычный бой"],15,MUTED)
+ if stage == 20:
+  _label(p,"⚠ Босс: усиленный удар при накоплении энергии. На 50% HP включает щит и ускоряется. Защитники впереди!",14,Color("#f5c391"))
  battle_status = _label(p,"Подготовка к бою",19 if accessibility_large_text else 17,MUTED)
  var field := _panel()
  _label(field,"ПРОТИВНИКИ",16,Color("#ed9a9a"))
@@ -738,6 +742,8 @@ func _combat_tick(dt: float) -> void:
     _announce_ability("⚠ %s готовит сокрушительный удар" % actor.name)
   elif actor.side == 1:
    actor.energy += 22.0
+   if actor.role == "Босс" and actor.energy >= 75.0 and actor.energy < 100.0 and log_label != null:
+    _announce_ability("⚠ %s накапливает энергию. Скоро мощный удар!" % actor.name)
   if actor.side == 0 and actor.energy >= 100.0:
    damage = int(float(damage)*2.4)
    actor.energy = 0.0
@@ -762,7 +768,8 @@ func _combat_tick(dt: float) -> void:
    damage = int(float(damage) * 0.85)
   if actor.side == 0 and actor.role == "Маг" and actor.energy >= 70.0:
    damage = int(float(damage) * 1.35)
-  if rng.randf() < 0.12:
+  var critical_hit := rng.randf() < 0.12
+  if critical_hit:
    damage = int(float(damage)*1.5)
   # Hero-specific automatic abilities, intentionally deterministic per seed.
   if actor.side == 0:
@@ -794,6 +801,9 @@ func _combat_tick(dt: float) -> void:
   damage -= absorbed
   var applied := mini(int(target.hp), damage)
   target.hp = maxi(0,int(target.hp)-damage)
+  target["last_critical"] = critical_hit
+  if critical_hit and actor.side == 0 and log_label != null:
+   _announce_ability("✦ Критический удар: %s · %d" % [actor.name, damage])
   if actor.side == 0:
    total_damage += applied
   if actor.side == 0 and rng.randf() < 0.15:
@@ -1236,7 +1246,10 @@ func _show_equipment() -> void:
    reforge.pressed.connect(_reforge_equipment.bind(i))
    row.add_child(reforge)
    for hero_id in party:
-    var equip_label := "Надеть: %s" % HEROES[hero_id].name
+    var current := _equipment_bonus(hero_id)
+    var proposed_atk := int(item.atk) + int(equipment_reforges[i]) * 2
+    var proposed_hp := int(item.hp) + int(equipment_reforges[i]) * 8
+    var equip_label := "Надеть: %s · ΔATK %+d / ΔHP %+d" % [HEROES[hero_id].name, proposed_atk - int(current.atk), proposed_hp - int(current.hp)]
     if int(equipped.get(str(hero_id),-1)) == i:
      equip_label = "✓ %s" % HEROES[hero_id].name
     var equip := _button(equip_label)
