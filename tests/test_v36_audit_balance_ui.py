@@ -38,7 +38,7 @@ class CombatBalanceTests(unittest.TestCase):
         for token in ['margin_top', 'margin_bottom', 'margin_left', 'margin_right']:
             self.assertIn(token, SOURCE)
     def test_nav_has_three_columns(self):
-        self.assertIn('nav_grid.columns = 2 if get_viewport_rect().size.x < 420.0 else 3', SOURCE)
+        self.assertIn('nav_grid.columns = 5', SOURCE)
         self.assertNotIn('nav.add_child(b)', SOURCE)
     def test_battle_arena_null_guard(self):
         segment = SOURCE.split('func _start_battle()', 1)[1].split('func _process(', 1)[0]
