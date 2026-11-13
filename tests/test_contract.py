@@ -1,0 +1,31 @@
+from pathlib import Path
+import re, unittest, zipfile
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = (ROOT/'scripts/main.gd').read_text()
+ARENA = (ROOT/'scripts/battle_arena.gd').read_text()
+CONFIG = (ROOT/'project.godot').read_text()
+SCENE = (ROOT/'scenes/main.tscn').read_text()
+class Contract(unittest.TestCase):
+    def test_scene(self): self.assertIn('res://scripts/main.gd',SCENE)
+    def test_arena(self): self.assertIn('func _draw()',ARENA)
+    def test_battle(self): self.assertIn('func _combat_tick(',SCRIPT)
+    def test_five_heroes(self): self.assertIn('party.size() != 5',SCRIPT)
+    def test_afk_cap(self): self.assertIn('12*3600',SCRIPT)
+    def test_expedition(self): self.assertIn('EXPEDITION_SECONDS := 7200',SCRIPT)
+    def test_portrait(self): self.assertIn('window/handheld/orientation=1',CONFIG)
+    def test_safe_area(self): self.assertIn('get_display_safe_area()',SCRIPT)
+    def test_tutorial(self): self.assertIn('func _show_tutorial()',SCRIPT)
+    def test_tutorial_saved(self): self.assertIn('"tutorial_seen":tutorial_seen',SCRIPT)
+    def test_campaign_complete(self): self.assertIn('completed_campaign = true',SCRIPT)
+    def test_backup(self): self.assertIn('BACKUP_PATH',SCRIPT)
+    def test_quest(self): self.assertIn('func _claim_quest(',SCRIPT)
+    def test_speed(self): self.assertIn('combat_speed',SCRIPT)
+    def test_fixed_step(self): self.assertIn('while tick >= BATTLE_STEP',SCRIPT)
+    def test_stat(self): self.assertIn('total_damage',SCRIPT)
+    def test_region_count(self): self.assertEqual(len(re.findall(r'\{"name":"[^"]+", "zone":',SCRIPT)),12)
+    def test_hero_count(self): self.assertEqual(len(re.findall(r'\{"name":"[^"]+", "role":',SCRIPT)),10)
+    def test_unique_functions(self):
+        funcs=re.findall(r'^func\s+(\w+)\(',SCRIPT,re.M)
+        self.assertEqual(len(funcs),len(set(funcs)))
+    def test_no_network(self): self.assertNotIn('HTTPRequest.new()',SCRIPT)
+if __name__=='__main__': unittest.main()
