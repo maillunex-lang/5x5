@@ -41,10 +41,10 @@ const REGIONS := [
  {"name":"Сибай", "zone":"Рубеж Бездны", "boss":"Пожиратель Руды"},
  {"name":"Южный Урал", "zone":"Сердце Разлома", "boss":"Архонт Разлома"}
 ]
-const BG := Color("#0a1422")
-const PANEL := Color("#142438")
-const PANEL2 := Color("#1b3148")
-const GOLD := Color("#eac783")
+const BG := Color("#080f1b")
+const PANEL := Color("#101d2c")
+const PANEL2 := Color("#1a3040")
+const GOLD := Color("#f0c978")
 const TEXT := Color("#f2e9d6")
 const MUTED := Color("#9db1bf")
 var gold := 200
@@ -61,6 +61,8 @@ var rng := RandomNumberGenerator.new()
 var body: VBoxContainer
 var safe_container: MarginContainer
 var nav_grid: GridContainer
+var nav_buttons: Dictionary = {}
+var hero_header: Label
 var hud: Label
 var log_label: Label
 var hero_bars: Array = []
@@ -168,35 +170,24 @@ func _ready() -> void:
  var root := VBoxContainer.new()
  root.add_theme_constant_override("separation", 9)
  safe_container.add_child(root)
- var title := Label.new()
- title.text = "✦  ETERNAL LEGENDS"
- title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
- title.add_theme_font_size_override("font_size", 23)
- title.add_theme_color_override("font_color", GOLD)
- root.add_child(title)
- var subtitle := Label.new()
- subtitle.text = "ЛЕГЕНДЫ ЮЖНОГО УРАЛА"
- subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
- subtitle.add_theme_font_size_override("font_size", 13)
- subtitle.add_theme_color_override("font_color", MUTED)
- root.add_child(subtitle)
+ # v9.0: fixed top resource header, scrollable content and bottom thumb navigation.
+ var header := PanelContainer.new()
+ header.add_theme_stylebox_override("panel", _ui_box(Color("#111f30"), GOLD.darkened(0.55), 13))
+ root.add_child(header)
+ var header_row := HBoxContainer.new()
+ header_row.add_theme_constant_override("separation", 9)
+ header.add_child(header_row)
+ hero_header = Label.new()
+ hero_header.text = "✦ ETERNAL LEGENDS"
+ hero_header.add_theme_font_size_override("font_size", 17)
+ hero_header.add_theme_color_override("font_color", GOLD)
+ hero_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+ header_row.add_child(hero_header)
  hud = Label.new()
- hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+ hud.add_theme_font_size_override("font_size", 14)
  hud.add_theme_color_override("font_color", GOLD)
- root.add_child(hud)
- nav_grid = GridContainer.new()
- nav_grid.columns = 2 if get_viewport_rect().size.x < 420.0 else 3
- nav_grid.add_theme_constant_override("h_separation", 6)
- nav_grid.add_theme_constant_override("v_separation", 6)
- root.add_child(nav_grid)
- for item in [{"t":"Карта","s":"map"},{"t":"Герои","s":"heroes"},{"t":"Бой","s":"battle"},{"t":"Поход","s":"expeditions"},{"t":"Снаряж.","s":"equipment"},{"t":"Опции","s":"settings"}]:
-  var b := _button(item.t)
-  b.add_theme_font_size_override("font_size", 14)
-  b.custom_minimum_size.y = 56
-  b.clip_text = true
-  b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-  b.pressed.connect(_navigate.bind(item.s))
-  nav_grid.add_child(b)
+ header_row.add_child(hud)
  var scroll := ScrollContainer.new()
  scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
  scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -205,6 +196,20 @@ func _ready() -> void:
  body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
  body.add_theme_constant_override("separation", 12)
  scroll.add_child(body)
+ nav_grid = GridContainer.new()
+ nav_grid.columns = 5
+ nav_grid.add_theme_constant_override("h_separation", 3)
+ nav_grid.add_theme_constant_override("v_separation", 3)
+ root.add_child(nav_grid)
+ for item in [{"t":"⌂\nГлавная","s":"map"},{"t":"♜\nГерои","s":"heroes"},{"t":"⚔\nБой","s":"battle"},{"t":"◆\nИнвент.","s":"equipment"},{"t":"☰\nЕщё","s":"settings"}]:
+  var b := _button(item.t)
+  b.add_theme_font_size_override("font_size", 12)
+  b.custom_minimum_size.y = 65
+  b.clip_text = true
+  b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  b.pressed.connect(_navigate.bind(item.s))
+  nav_grid.add_child(b)
+  nav_buttons[item.s] = b
  _navigate("map")
  if not tutorial_seen:
   _show_tutorial()
@@ -231,7 +236,7 @@ func _update_safe_area() -> void:
  safe_container.add_theme_constant_override("margin_left", left)
  safe_container.add_theme_constant_override("margin_right", right)
  if nav_grid != null:
-  nav_grid.columns = 2 if viewport_size.x < 420.0 else 3
+  nav_grid.columns = 5
 
 func _panel() -> VBoxContainer:
  var panel := PanelContainer.new()
@@ -261,8 +266,23 @@ func _label(parent: Node, text_value: String, size := 18, color := TEXT) -> Labe
  parent.add_child(l)
  return l
 
+func _ui_box(fill: Color, outline: Color, radius: int) -> StyleBoxFlat:
+ var style := StyleBoxFlat.new()
+ style.bg_color = fill
+ style.border_color = outline
+ style.set_border_width_all(1)
+ style.set_corner_radius_all(radius)
+ style.set_content_margin_all(12)
+ return style
+
 func _button(value: String) -> Button:
  var b := Button.new()
+ b.add_theme_stylebox_override("normal", _ui_box(Color("#17293b"), Color("#5d6c76"), 11))
+ b.add_theme_stylebox_override("hover", _ui_box(Color("#263b4d"), GOLD, 11))
+ b.add_theme_stylebox_override("pressed", _ui_box(Color("#57412a"), GOLD, 11))
+ b.add_theme_stylebox_override("disabled", _ui_box(Color("#18212b"), Color("#343c48"), 11))
+ b.add_theme_color_override("font_color", TEXT)
+ b.add_theme_color_override("font_hover_color", GOLD)
  b.text = value
  b.custom_minimum_size.y = 56
  b.add_theme_font_size_override("font_size", 17)
@@ -284,6 +304,10 @@ func _navigate(destination: String) -> void:
  if active and destination != "battle":
   return
  screen = destination
+ for key in nav_buttons:
+  var nav_button: Button = nav_buttons[key]
+  nav_button.add_theme_stylebox_override("normal", _ui_box(Color("#49371f") if key == destination else Color("#111e2b"), GOLD if key == destination else Color("#354758"), 10))
+  nav_button.add_theme_color_override("font_color", GOLD if key == destination else TEXT)
  _clear()
  _refresh_hud()
  match destination:
@@ -308,7 +332,7 @@ func _navigate(destination: String) -> void:
 
 func _refresh_hud() -> void:
  if hud != null:
-  hud.text = "✦ %d золота   •   Ур. %d   •   Этап %d-%d" % [gold, level, chapter, stage]
+  hud.text = "◈ %d   ✦ Ур.%d" % [gold, level]
 
 func _show_tutorial() -> void:
  if active:
@@ -329,6 +353,27 @@ func _finish_tutorial() -> void:
  _navigate("map")
 
 func _show_map() -> void:
+ var banner := _panel()
+ _label(banner,"✦  ЛЕГЕНДЫ ЮЖНОГО УРАЛА",14,GOLD)
+ _label(banner,"ХРАНИТЕЛИ\nВЕЧНОСТИ",30,TEXT)
+ _label(banner,"Глава %d  •  Этап %d/20" % [chapter,stage],16,GOLD)
+ var hero_line := HBoxContainer.new()
+ banner.add_child(hero_line)
+ for hero_id in party:
+  var badge := PanelContainer.new()
+  badge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  badge.add_theme_stylebox_override("panel", _ui_box(Color("#1b3040"), GOLD.darkened(0.45), 10))
+  hero_line.add_child(badge)
+  var icon := Label.new()
+  icon.text = str(HEROES[hero_id].symbol)
+  icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+  icon.add_theme_font_size_override("font_size", 27)
+  badge.add_child(icon)
+ var battle_cta := _button("⚔  В ПОХОД")
+ battle_cta.add_theme_stylebox_override("normal", _ui_box(Color("#733b1c"), GOLD, 12))
+ battle_cta.add_theme_font_size_override("font_size", 21)
+ battle_cta.pressed.connect(_navigate.bind("battle"))
+ banner.add_child(battle_cta)
  var p := _panel()
  var region: Dictionary = REGIONS[mini(chapter-1, REGIONS.size()-1)]
  _label(p,"🏰  %s · %s" % [region.name, region.zone],22,GOLD)
@@ -420,12 +465,14 @@ func _claim_afk() -> void:
 
 func _show_heroes() -> void:
  var top := _panel()
- _label(top,"ВАШ ОТРЯД • %d/5" % party.size(),20,GOLD)
+ _label(top,"✦  ВАШИ ГЕРОИ • %d/5" % party.size(),23,GOLD)
  _label(top,"Выберите ровно пять героев. Первые два места: передняя линия. Остальные: задняя линия.",15,MUTED)
  _label(top,"Построение: %s" % ", ".join(_party_names()),14,GOLD)
  for i in range(HEROES.size()):
   var h: Dictionary = HEROES[i]
   var p := _panel()
+  var portrait := _label(p,"%s   %s" % [h.symbol,h.name],23,GOLD)
+  portrait.add_theme_color_override("font_shadow_color",Color("#77572b"))
   var line := HBoxContainer.new()
   p.add_child(line)
   var text_value := "%s  %s\n%s • %s" % [h.symbol,h.name,h.faction,h.role]
@@ -522,7 +569,7 @@ func _upgrade() -> void:
 
 func _show_battle() -> void:
  var p := _panel()
- _label(p,"⚔  БИТВА · %s" % REGIONS[chapter-1].name,22,GOLD)
+ _label(p,"⚔  БИТВА · %s" % REGIONS[chapter-1].name,24,GOLD)
  _label(p,"Регион %d/12 · Этап %d/20 · %s" % [chapter,stage,"БОСС" if stage == 20 else "Обычный бой"],15,MUTED)
  if stage == 20:
   _label(p,"⚠ Босс: усиленный удар при накоплении энергии. На 50% HP включает щит и ускоряется. Защитники впереди!",14,Color("#f5c391"))
@@ -547,7 +594,7 @@ func _show_battle() -> void:
  _label(field,"ПРОТИВНИКИ",16,Color("#ed9a9a"))
  arena = Control.new()
  arena.set_script(ARENA_SCRIPT)
- arena.custom_minimum_size = Vector2(0,240)
+ arena.custom_minimum_size = Vector2(0,370)
  arena.size_flags_horizontal = Control.SIZE_EXPAND_FILL
  field.add_child(arena)
  arena.call("configure", chapter - 1, party.map(func(hero_id: int) -> String: return str(HEROES[hero_id].role)))
@@ -1232,7 +1279,7 @@ func _equipment_bonus(hero_id: int) -> Dictionary:
 
 func _show_equipment() -> void:
  var p := _panel()
- _label(p,"СНАРЯЖЕНИЕ И АРТЕФАКТЫ",21,GOLD)
+ _label(p,"◆  ИНВЕНТАРЬ И АРТЕФАКТЫ",24,GOLD)
  _label(p,"Покупайте предметы за игровое золото и назначайте их героям. Один предмет можно закрепить за одним героем.",15,MUTED)
  for i in range(EQUIPMENT.size()):
   var item: Dictionary = EQUIPMENT[i]
