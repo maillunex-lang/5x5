@@ -18,8 +18,8 @@ const EXPEDITION_SECONDS := 7200
 const VIP_TRIAL_SECONDS := 7 * 24 * 3600
 const VIP_UNLOCK_WINS := 5
 const HEROES := [
- {"name":"Айдар", "role":"Танк", "faction":"Рассвет", "symbol":"🛡", "hp":225, "atk":15, "speed":0.85, "skill":"Щит"},
- {"name":"Айсылу", "role":"Стрелок", "faction":"Лес", "symbol":"🏹", "hp":112, "atk":29, "speed":1.3, "skill":"Точный выстрел"},
+ {"name":"Айдар", "role":"Танк", "faction":"Рассвет", "symbol":"♜", "hp":225, "atk":15, "speed":0.85, "skill":"Щит"},
+ {"name":"Айсылу", "role":"Стрелок", "faction":"Лес", "symbol":"↗", "hp":112, "atk":29, "speed":1.3, "skill":"Точный выстрел"},
  {"name":"Булат", "role":"Воин", "faction":"Буря", "symbol":"⚔", "hp":175, "atk":22, "speed":1.0, "skill":"Удар молота"},
  {"name":"Зарифа", "role":"Поддержка", "faction":"Лес", "symbol":"✦", "hp":128, "atk":14, "speed":0.95, "skill":"Исцеление"},
  {"name":"Арден", "role":"Танк", "faction":"Рассвет", "symbol":"◆", "hp":205, "atk":17, "speed":0.9, "skill":"Клятва"},
@@ -43,12 +43,12 @@ const REGIONS := [
  {"name":"Сибай", "zone":"Рубеж Бездны", "boss":"Пожиратель Руды"},
  {"name":"Южный Урал", "zone":"Сердце Разлома", "boss":"Архонт Разлома"}
 ]
-const BG := Color("#080f1b")
-const PANEL := Color("#101d2c")
-const PANEL2 := Color("#1a3040")
-const GOLD := Color("#f0c978")
-const TEXT := Color("#f2e9d6")
-const MUTED := Color("#9db1bf")
+const BG := Color("#080e1b")
+const PANEL := Color("#131b2e")
+const PANEL2 := Color("#212d43")
+const GOLD := Color("#eac78a")
+const TEXT := Color("#f4ecdf")
+const MUTED := Color("#a7b4c7")
 var gold := 200
 var level := 1
 var chapter := 1
@@ -60,6 +60,17 @@ var units: Array = []
 var battle_time := 0.0
 var tick := 0.0
 var rng := RandomNumberGenerator.new()
+const SCREEN_TITLES := {
+ "map":"Главная", "heroes":"Герои", "battle":"Сражение", "equipment":"Снаряжение",
+ "settings":"Меню", "preferences":"Настройки", "world":"Карта мира", "quests":"Задания",
+ "expeditions":"Экспедиции", "loot":"Кузница", "achievements":"Достижения",
+ "tutorial":"Обучение", "codex":"Летопись", "bestiary":"Бестиарий",
+ "talents":"Таланты", "journal":"Журнал", "regions":"Награды регионов", "vip":"VIP-клуб"
+}
+const PRIMARY_SCREENS := ["map","heroes","battle","equipment","settings"]
+var nav_history: Array[String] = []
+var is_navigating_back := false
+var scroll_view: ScrollContainer
 var body: VBoxContainer
 var safe_container: MarginContainer
 var nav_grid: GridContainer
@@ -167,25 +178,42 @@ func _ready() -> void:
  var bg := ColorRect.new()
  bg.color = BG
  bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
  add_child(bg)
+ var gradient := Gradient.new()
+ gradient.set_color(0,Color("#091421"))
+ gradient.set_color(1,Color("#21152d"))
+ var background_texture := GradientTexture2D.new()
+ background_texture.gradient = gradient
+ background_texture.fill_from = Vector2(0,0)
+ background_texture.fill_to = Vector2(1,1)
+ background_texture.width = 64
+ background_texture.height = 64
+ var backdrop := TextureRect.new()
+ backdrop.texture = background_texture
+ backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+ backdrop.stretch_mode = TextureRect.STRETCH_SCALE
+ backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ add_child(backdrop)
  safe_container = MarginContainer.new()
  safe_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  add_child(safe_container)
  _update_safe_area()
  get_viewport().size_changed.connect(_update_safe_area)
  var root := VBoxContainer.new()
- root.add_theme_constant_override("separation", 9)
+ root.add_theme_constant_override("separation", 11)
  safe_container.add_child(root)
  # v9.0: fixed top resource header, scrollable content and bottom thumb navigation.
  var header := PanelContainer.new()
- header.add_theme_stylebox_override("panel", _ui_box(Color("#111f30"), GOLD.darkened(0.55), 13))
+ header.add_theme_stylebox_override("panel", _ui_box(Color("#141b2c"), Color("#65533e"), 15))
  root.add_child(header)
  var header_row := HBoxContainer.new()
  header_row.add_theme_constant_override("separation", 9)
  header.add_child(header_row)
  hero_header = Label.new()
- hero_header.text = "✦ ETERNAL LEGENDS"
- hero_header.add_theme_font_size_override("font_size", 17)
+ hero_header.text = "✦ ЛЕГЕНДЫ"
+ hero_header.add_theme_font_size_override("font_size", 19)
  hero_header.add_theme_color_override("font_color", GOLD)
  hero_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
  header_row.add_child(hero_header)
@@ -194,28 +222,30 @@ func _ready() -> void:
  hud.add_theme_font_size_override("font_size", 14)
  hud.add_theme_color_override("font_color", GOLD)
  header_row.add_child(hud)
- var scroll := ScrollContainer.new()
- scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
- scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
- root.add_child(scroll)
+ scroll_view = ScrollContainer.new()
+ scroll_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+ scroll_view.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+ root.add_child(scroll_view)
  body = VBoxContainer.new()
  body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
  body.add_theme_constant_override("separation", 12)
- scroll.add_child(body)
+ scroll_view.add_child(body)
  nav_grid = GridContainer.new()
  nav_grid.columns = 5
  nav_grid.add_theme_constant_override("h_separation", 3)
  nav_grid.add_theme_constant_override("v_separation", 3)
  root.add_child(nav_grid)
- for item in [{"t":"⌂\nГлавная","s":"map"},{"t":"♜\nГерои","s":"heroes"},{"t":"⚔\nБой","s":"battle"},{"t":"◆\nИнвент.","s":"equipment"},{"t":"☰\nЕщё","s":"settings"}]:
+ for item in [{"t":"⌂\nГлавная","s":"map"},{"t":"♜\nГерои","s":"heroes"},{"t":"⚔\nБой","s":"battle"},{"t":"◆\nВещи","s":"equipment"},{"t":"☷\nМеню","s":"settings"}]:
   var b := _button(item.t)
   b.add_theme_font_size_override("font_size", 12)
-  b.custom_minimum_size.y = 65
+  b.custom_minimum_size.y = 72
   b.clip_text = true
+  b.tooltip_text = str(SCREEN_TITLES[item.s])
   b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
   b.pressed.connect(_navigate.bind(item.s))
   nav_grid.add_child(b)
   nav_buttons[item.s] = b
+ _update_safe_area()
  _navigate("map")
  if not tutorial_seen:
   _show_tutorial()
@@ -248,10 +278,14 @@ func _panel() -> VBoxContainer:
  var panel := PanelContainer.new()
  var style := StyleBoxFlat.new()
  style.bg_color = PANEL
- style.corner_radius_top_left = 14
- style.corner_radius_top_right = 14
- style.corner_radius_bottom_left = 14
- style.corner_radius_bottom_right = 14
+ style.border_color = Color("#394052")
+ style.set_border_width_all(1)
+ style.shadow_color = Color(0.0,0.0,0.0,0.22)
+ style.shadow_size = 4
+ style.corner_radius_top_left = 16
+ style.corner_radius_top_right = 16
+ style.corner_radius_bottom_left = 16
+ style.corner_radius_bottom_right = 16
  style.content_margin_left = 15
  style.content_margin_right = 15
  style.content_margin_top = 15
@@ -283,12 +317,14 @@ func _ui_box(fill: Color, outline: Color, radius: int) -> StyleBoxFlat:
 
 func _button(value: String) -> Button:
  var b := Button.new()
- b.add_theme_stylebox_override("normal", _ui_box(Color("#17293b"), Color("#5d6c76"), 11))
- b.add_theme_stylebox_override("hover", _ui_box(Color("#263b4d"), GOLD, 11))
- b.add_theme_stylebox_override("pressed", _ui_box(Color("#57412a"), GOLD, 11))
+ b.add_theme_stylebox_override("normal", _ui_box(Color("#263149"), Color("#626b7c"), 12))
+ b.add_theme_stylebox_override("hover", _ui_box(Color("#33425a"), GOLD, 12))
+ b.add_theme_stylebox_override("pressed", _ui_box(Color("#76532f"), GOLD, 12))
  b.add_theme_stylebox_override("disabled", _ui_box(Color("#18212b"), Color("#343c48"), 11))
  b.add_theme_color_override("font_color", TEXT)
  b.add_theme_color_override("font_hover_color", GOLD)
+ b.add_theme_color_override("font_disabled_color", Color("#7b8393"))
+ b.add_theme_color_override("font_pressed_color", Color("#fff6e4"))
  b.text = value
  b.custom_minimum_size.y = 56
  b.add_theme_font_size_override("font_size", 17)
@@ -306,25 +342,82 @@ func _clear() -> void:
  battle_summary = null
  battle_button = null
 
+func _screen_category(destination: String) -> String:
+ if destination in ["talents","bestiary"]:
+  return "heroes"
+ if destination in ["loot"]:
+  return "equipment"
+ if destination in ["journal"]:
+  return "battle"
+ if destination in ["world","regions"]:
+  return "map"
+ if destination in PRIMARY_SCREENS:
+  return destination
+ return "settings"
+
+func _go_back() -> void:
+ if active:
+  return
+ is_navigating_back = true
+ var destination := "map"
+ if not nav_history.is_empty():
+  destination = nav_history.pop_back()
+ _navigate(destination)
+ is_navigating_back = false
+
+func _unhandled_input(event: InputEvent) -> void:
+ if event.is_action_pressed("ui_cancel") and not event.is_echo():
+  _go_back()
+  get_viewport().set_input_as_handled()
+
+func _screen_topbar(destination: String) -> void:
+ if destination in PRIMARY_SCREENS or destination == "tutorial":
+  return
+ var line := HBoxContainer.new()
+ line.add_theme_constant_override("separation",8)
+ body.add_child(line)
+ var back := _button("‹ Назад")
+ back.custom_minimum_size = Vector2(110,54)
+ back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+ back.pressed.connect(_go_back)
+ line.add_child(back)
+ var title := _label(line,str(SCREEN_TITLES.get(destination,"Раздел")),18,GOLD)
+ title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
 func _navigate(destination: String) -> void:
  if active and destination != "battle":
   return
+ if destination != screen and not is_navigating_back and screen != "tutorial":
+  if destination in PRIMARY_SCREENS:
+   nav_history.clear()
+  else:
+   nav_history.append(screen)
+   if nav_history.size() > 12:
+    nav_history.pop_front()
  screen = destination
+ var category := _screen_category(destination)
  for key in nav_buttons:
   var nav_button: Button = nav_buttons[key]
-  nav_button.add_theme_stylebox_override("normal", _ui_box(Color("#49371f") if key == destination else Color("#111e2b"), GOLD if key == destination else Color("#354758"), 10))
-  nav_button.add_theme_color_override("font_color", GOLD if key == destination else TEXT)
+  nav_button.add_theme_stylebox_override("normal", _ui_box(Color("#54402d") if key == category else Color("#151d2e"), GOLD if key == category else Color("#374052"), 12))
+  nav_button.add_theme_color_override("font_color", GOLD if key == category else TEXT)
+ if hero_header != null:
+  hero_header.text = "✦ " + str(SCREEN_TITLES.get(destination,"Легенды"))
  _clear()
+ if scroll_view != null:
+  scroll_view.scroll_vertical = 0
  _refresh_hud()
+ _screen_topbar(destination)
  match destination:
   "map": _show_map()
+  "world": _show_world()
   "heroes": _show_heroes()
   "battle":
    _show_battle()
    if not active and party.size() == 5:
     _start_battle()
   "quests": _show_quests()
-  "settings": _show_settings()
+  "settings": _show_more()
+  "preferences": _show_settings()
   "expeditions": _show_expeditions()
   "equipment": _show_equipment()
   "achievements": _show_achievements()
@@ -336,6 +429,42 @@ func _navigate(destination: String) -> void:
   "regions": _show_region_rewards()
   "loot": _show_loot()
   "vip": _show_vip()
+
+func _shortcut_grid(parent: Node, entries: Array) -> void:
+ var grid := GridContainer.new()
+ grid.columns = 2
+ grid.add_theme_constant_override("h_separation",8)
+ grid.add_theme_constant_override("v_separation",8)
+ parent.add_child(grid)
+ for entry in entries:
+  var b := _button(str(entry.text))
+  b.custom_minimum_size.y = 70
+  b.add_theme_font_size_override("font_size",15)
+  b.pressed.connect(_navigate.bind(str(entry.screen)))
+  grid.add_child(b)
+
+func _show_more() -> void:
+ var heading := _panel()
+ _label(heading,"☷  ЗАЛ ХРАНИТЕЛЕЙ",24,GOLD)
+ _label(heading,"Все дополнительные возможности собраны здесь.",15,MUTED)
+ var adventures := _panel()
+ _label(adventures,"ПРИКЛЮЧЕНИЯ",18,GOLD)
+ _shortcut_grid(adventures,[
+  {"text":"◈ Регионы","screen":"world"},{"text":"✦ Экспедиции","screen":"expeditions"},
+  {"text":"☷ Задания","screen":"quests"},{"text":"✺ Достижения","screen":"achievements"}
+ ])
+ var growth := _panel()
+ _label(growth,"РАЗВИТИЕ ГЕРОЕВ",18,GOLD)
+ _shortcut_grid(growth,[
+  {"text":"⚒ Кузница","screen":"loot"},{"text":"✧ Таланты","screen":"talents"},
+  {"text":"♜ Бестиарий","screen":"bestiary"},{"text":"◆ Награды","screen":"regions"}
+ ])
+ var records := _panel()
+ _label(records,"ЛЕТОПИСЬ И ПРОФИЛЬ",18,GOLD)
+ _shortcut_grid(records,[
+  {"text":"☷ Журнал","screen":"journal"},{"text":"✦ Летопись","screen":"codex"},
+  {"text":"★ VIP-клуб","screen":"vip"},{"text":"⚙ Настройки","screen":"preferences"}
+ ])
 
 func _process_vip_ui(delta: float) -> void:
  # v9.7: update expiration badge once a second; do not rebuild the active combat screen.
@@ -369,113 +498,92 @@ func _finish_tutorial() -> void:
  _navigate("map")
 
 func _show_map() -> void:
- var banner := _panel()
- _label(banner,"✦  ЛЕГЕНДЫ ЮЖНОГО УРАЛА",14,GOLD)
- var vip_button := _button("★ VIP АКТИВЕН" if _vip_active() else "★ VIP КЛУБ")
- vip_button.pressed.connect(_navigate.bind("vip"))
- banner.add_child(vip_button)
- if vip_trial_claimed:
-  _label(banner,_vip_status_text(),13,GOLD if _vip_active() else MUTED)
- _label(banner,"ХРАНИТЕЛИ\nВЕЧНОСТИ",30,TEXT)
- _label(banner,"Глава %d  •  Этап %d/20" % [chapter,stage],16,GOLD)
+ var region: Dictionary = REGIONS[mini(chapter-1,REGIONS.size()-1)]
+ var hero_card := _panel()
+ _label(hero_card,"✦  ХРАНИТЕЛИ ВЕЧНОСТИ",22,GOLD)
+ _label(hero_card,"%s  ·  %s" % [region.name,region.zone],16,MUTED)
+ _label(hero_card,"ГЛАВА %d / 12   •   БОЙ %d / 20" % [chapter,stage],18,TEXT)
+ _progress_meter(hero_card,stage,20,Color("#d8a46d"))
  var hero_line := HBoxContainer.new()
- banner.add_child(hero_line)
+ hero_line.add_theme_constant_override("separation",6)
+ hero_card.add_child(hero_line)
  for hero_id in party:
   var badge := PanelContainer.new()
   badge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-  badge.add_theme_stylebox_override("panel", _ui_box(Color("#1b3040"), GOLD.darkened(0.45), 10))
+  badge.add_theme_stylebox_override("panel", _ui_box(Color("#25344a"),GOLD.darkened(0.5),12))
   hero_line.add_child(badge)
   var icon := Label.new()
   icon.text = str(HEROES[hero_id].symbol)
   icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-  icon.add_theme_font_size_override("font_size", 27)
+  icon.add_theme_font_size_override("font_size",29)
   badge.add_child(icon)
- var battle_cta := _button("⚔  В ПОХОД")
- battle_cta.add_theme_stylebox_override("normal", _ui_box(Color("#733b1c"), GOLD, 12))
- battle_cta.add_theme_font_size_override("font_size", 21)
+ var battle_cta := _button("⚔  В БОЙ  •  %s" % ("БОСС" if stage == 20 else "ЭТАП %d" % stage))
+ battle_cta.add_theme_stylebox_override("normal",_ui_box(Color("#8d472f"),GOLD,14))
+ battle_cta.add_theme_font_size_override("font_size",21)
+ battle_cta.custom_minimum_size.y = 76
  battle_cta.pressed.connect(_navigate.bind("battle"))
- banner.add_child(battle_cta)
- var p := _panel()
- var region: Dictionary = REGIONS[mini(chapter-1, REGIONS.size()-1)]
- _label(p,"🏰  %s · %s" % [region.name, region.zone],22,GOLD)
- _label(p,"Разломы Вечности пробудили древних стражей. Исследуйте земли Башкортостана и восстановите Сердце Урала.",16)
- _label(p,"Босс региона: %s" % region.boss,15,MUTED)
- var route := _panel()
- _label(route,"КАРТА ПРИКЛЮЧЕНИЙ",19,GOLD)
- for i in range(5):
-  var idx := i + 1
-  var icon_text := "●" if idx <= int(ceil(float(stage)/4.0)) else "○"
-  var place_names := ["Цитадель", "Древние леса", "Переправа", "Старая башня", "Разлом"]
-  _label(route,"%s  %s" % [icon_text,place_names[i]],17)
- var progress := _panel()
- _label(progress,"ПУТЬ ХРАНИТЕЛЯ",19,GOLD)
- _label(progress,"Глава %d / 12 • Бой %d / 20" % [chapter,stage],18)
- if completed_campaign:
-  _label(progress,"Кампания завершена! Последний бой доступен для повторения.",15,GOLD)
- var regional_contract := _panel()
- _label(regional_contract,"КОНТРАКТ РЕГИОНА",19,GOLD)
- var local_wins := int(regional_wins[chapter-1])
- _label(regional_contract,"Победить 5 противников региона: %d / 5" % mini(5,local_wins),16)
- _progress_meter(regional_contract,local_wins,5,Color("#76d6aa"))
- var contract_button := _button("Награда получена" if regional_contracts_claimed.has(chapter) else "ЗАБРАТЬ 250 ЗОЛОТА" if local_wins >= 5 else "Нужно 5 побед")
- contract_button.disabled = local_wins < 5 or regional_contracts_claimed.has(chapter)
- contract_button.pressed.connect(_claim_regional_contract.bind(chapter))
- regional_contract.add_child(contract_button)
- var loot_button := _button("ДОБЫЧА И КУЗНИЦА")
- loot_button.pressed.connect(_navigate.bind("loot"))
- regional_contract.add_child(loot_button)
- var regions_panel := _panel()
- _label(regions_panel,"РЕГИОНЫ БАШКОРТОСТАНА",19,GOLD)
- for i in range(REGIONS.size()):
-  var reg: Dictionary = REGIONS[i]
-  _label(regions_panel,"%s  %02d · %s" % ["●" if i < chapter else "○",i+1,reg.name],14,GOLD if i < chapter else MUTED)
- var go := _button("⚔  НАЧАТЬ СРАЖЕНИЕ")
- go.pressed.connect(_navigate.bind("battle"))
- progress.add_child(go)
- var quests := _panel()
- _label(quests,"ЗАДАНИЯ ХРАНИТЕЛЯ",19,GOLD)
- var q := _button("ПОСМОТРЕТЬ ЗАДАНИЯ")
- q.pressed.connect(_navigate.bind("quests"))
- quests.add_child(q)
- _reset_daily_if_needed()
- var daily := _panel()
- _label(daily,"ЕЖЕДНЕВНОЕ ИСПЫТАНИЕ",19,GOLD)
- _label(daily,"Победы сегодня: %d / 3" % mini(3,daily_wins),16)
- var daily_button := _button("Награда получена" if daily_claimed else "ЗАБРАТЬ 150 ЗОЛОТА" if daily_wins >= 3 else "Нужно 3 победы")
- daily_button.disabled = daily_claimed or daily_wins < 3
- daily_button.pressed.connect(_claim_daily)
- daily.add_child(daily_button)
- var achievements_button := _button("ДОСТИЖЕНИЯ")
- achievements_button.pressed.connect(_navigate.bind("achievements"))
- daily.add_child(achievements_button)
- var exp := _panel()
- _label(exp,"ЭКСПЕДИЦИИ И РЕЛИКВИИ",19,GOLD)
- _label(exp,"Реликвии: %d • завершённых экспедиций: %d" % [relics,expedition_claims],15)
- var codex_button := _button("ЛЕТОПИСЬ РЕГИОНОВ")
- codex_button.pressed.connect(_navigate.bind("codex"))
- exp.add_child(codex_button)
- var bestiary_button := _button("БЕСТИАРИЙ БОССОВ")
- bestiary_button.pressed.connect(_navigate.bind("bestiary"))
- exp.add_child(bestiary_button)
- var region_button := _button("НАГРАДЫ РЕГИОНОВ")
- region_button.pressed.connect(_navigate.bind("regions"))
- exp.add_child(region_button)
- var journal_button := _button("ЖУРНАЛ СРАЖЕНИЙ")
- journal_button.pressed.connect(_navigate.bind("journal"))
- exp.add_child(journal_button)
- var exp_btn := _button("ОТКРЫТЬ ЭКСПЕДИЦИИ")
- exp_btn.pressed.connect(_navigate.bind("expeditions"))
- exp.add_child(exp_btn)
+ hero_card.add_child(battle_cta)
+ if last_battle_result != "":
+  _label(hero_card,last_battle_result,14,Color("#8cd3bd"))
+ var quick := _panel()
+ _label(quick,"ЧТО ДЕЛАЕМ ДАЛЬШЕ?",19,GOLD)
+ _shortcut_grid(quick,[
+  {"text":"♜ Улучшить отряд","screen":"heroes"},
+  {"text":"◈ Карта регионов","screen":"world"},
+  {"text":"✦ Экспедиции","screen":"expeditions"},
+  {"text":"☷ Задания","screen":"quests"}
+ ])
  var idle := _panel()
- _label(idle,"AFK-СОКРОВИЩНИЦА",19,GOLD)
+ _label(idle,"◈  СОКРОВИЩНИЦА AFK",19,GOLD)
  var elapsed := maxi(0,int(Time.get_unix_time_from_system()) - last_claim)
  var earned := (mini(elapsed,12*3600) / 60) * (2 + chapter)
- _label(idle,"Накоплено: %d золота" % earned,20)
- _label(idle,"До 12 часов офлайн-добычи. Награды рассчитываются по времени устройства в этом прототипе.",14,MUTED)
- var claim := _button("ЗАБРАТЬ НАГРАДЫ")
+ _label(idle,"%d золота накоплено" % earned,22,TEXT)
+ _label(idle,"До 12 часов наград за отсутствие.",14,MUTED)
+ var claim := _button("ЗАБРАТЬ ЗОЛОТО")
  claim.disabled = earned < 1
  claim.pressed.connect(_claim_afk)
  idle.add_child(claim)
+ _reset_daily_if_needed()
+ var daily := _panel()
+ _label(daily,"ЕЖЕДНЕВНАЯ ЦЕЛЬ",18,GOLD)
+ _label(daily,"Победы сегодня: %d / 3" % mini(3,daily_wins),16)
+ _progress_meter(daily,daily_wins,3,Color("#70c9b2"))
+ var daily_button := _button("УЖЕ ПОЛУЧЕНО" if daily_claimed else "ЗАБРАТЬ 150 ЗОЛОТА" if daily_wins >= 3 else "ПОКА НЕДОСТУПНО")
+ daily_button.disabled = daily_claimed or daily_wins < 3
+ daily_button.pressed.connect(_claim_daily)
+ daily.add_child(daily_button)
+ var tip := _panel()
+ _label(tip,"✧  СОВЕТ ХРАНИТЕЛЮ",17,GOLD)
+ _label(tip,"Первые два героя защищают заднюю линию. Улучшайте состав перед боссом.",15,MUTED)
+
+func _show_world() -> void:
+ var region: Dictionary = REGIONS[mini(chapter-1,REGIONS.size()-1)]
+ var overview := _panel()
+ _label(overview,"◈  КАРТА ЮЖНОГО УРАЛА",23,GOLD)
+ _label(overview,"%s  •  %s" % [region.name,region.zone],16,TEXT)
+ _label(overview,"Босс региона: %s" % region.boss,15,MUTED)
+ _label(overview,"Глава %d / 12 • Бой %d / 20" % [chapter,stage],15,GOLD)
+ _progress_meter(overview,stage,20,Color("#cfa46c"))
+ var route := _panel()
+ _label(route,"ПУТЬ ЧЕРЕЗ РЕГИОН",18,GOLD)
+ var steps := ["Цитадель","Древние леса","Переправа","Старая башня","Разлом"]
+ for i in range(steps.size()):
+  var reached: bool = stage >= (i*4+1)
+  _label(route,"%s  %s  •  бои %d–%d" % ["◆" if reached else "◇",steps[i],i*4+1,(i+1)*4],16,GOLD if reached else MUTED)
+ var regional_contract := _panel()
+ _label(regional_contract,"КОНТРАКТ РЕГИОНА",18,GOLD)
+ var local_wins := int(regional_wins[chapter-1])
+ _label(regional_contract,"Победы в регионе: %d / 5" % mini(5,local_wins),16)
+ _progress_meter(regional_contract,local_wins,5,Color("#70c9b2"))
+ var contract_button := _button("НАГРАДА ПОЛУЧЕНА" if regional_contracts_claimed.has(chapter) else "ЗАБРАТЬ 250 ЗОЛОТА" if local_wins >= 5 else "ТРЕБУЕТСЯ 5 ПОБЕД")
+ contract_button.disabled = local_wins < 5 or regional_contracts_claimed.has(chapter)
+ contract_button.pressed.connect(_claim_regional_contract.bind(chapter))
+ regional_contract.add_child(contract_button)
+ var regions_panel := _panel()
+ _label(regions_panel,"12 РЕГИОНОВ",18,GOLD)
+ for i in range(REGIONS.size()):
+  var reg: Dictionary = REGIONS[i]
+  _label(regions_panel,"%s  %02d · %s" % ["◆" if i < chapter else "◇",i+1,reg.name],15,GOLD if i < chapter else MUTED)
 
 func _claim_afk() -> void:
  var elapsed := maxi(0,int(Time.get_unix_time_from_system()) - last_claim)
@@ -489,14 +597,56 @@ func _show_heroes() -> void:
  _label(top,"✦  ВАШИ ГЕРОИ • %d/5" % party.size(),23,GOLD)
  _label(top,"Выберите ровно пять героев. Первые два места: передняя линия. Остальные: задняя линия.",15,MUTED)
  _label(top,"Построение: %s" % ", ".join(_party_names()),14,GOLD)
+ var party_row := HBoxContainer.new()
+ party_row.add_theme_constant_override("separation",6)
+ top.add_child(party_row)
+ for hero_id in party:
+  var avatar := PanelContainer.new()
+  avatar.add_theme_stylebox_override("panel",_ui_box(Color("#26344a"),GOLD.darkened(0.5),9))
+  avatar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  party_row.add_child(avatar)
+  var icon := Label.new()
+  icon.text = str(HEROES[hero_id].symbol)
+  icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+  icon.add_theme_font_size_override("font_size",22)
+  avatar.add_child(icon)
+
+ var formation := _panel()
+ _label(formation,"БОЕВОЕ ПОСТРОЕНИЕ",17,GOLD)
+ var formations_row := GridContainer.new()
+ formations_row.columns = 3
+ formations_row.add_theme_constant_override("h_separation",8)
+ formation.add_child(formations_row)
+ for i in range(FORMATIONS.size()):
+  var form_button := _button("Схема %d%s" % [i+1," ✓" if formation_index == i else ""])
+  form_button.custom_minimum_size.y = 52
+  form_button.add_theme_font_size_override("font_size",14)
+  form_button.pressed.connect(_set_formation.bind(i))
+  formations_row.add_child(form_button)
+ var upgrade := _panel()
+ _label(upgrade,"ПРОКАЧКА ОТРЯДА • УРОВЕНЬ %d" % level,17,GOLD)
+ var cost := 100 * level
+ var upgrades_row := HBoxContainer.new()
+ upgrades_row.add_theme_constant_override("separation",8)
+ upgrade.add_child(upgrades_row)
+ var up := _button("⬆ УЛУЧШИТЬ · %d" % cost)
+ up.disabled = gold < cost
+ up.pressed.connect(_upgrade)
+ upgrades_row.add_child(up)
+ var talents_button := _button("✧ Таланты")
+ talents_button.pressed.connect(_navigate.bind("talents"))
+ upgrades_row.add_child(talents_button)
+ _label(upgrade,"Следующий уровень: +15 HP и +3 атаки героям",13,Color("#8de4b9"))
+
+ _label(body,"СОСТАВ ГЕРОЕВ",18,GOLD)
  for i in range(HEROES.size()):
   var h: Dictionary = HEROES[i]
   var p := _panel()
-  var portrait := _label(p,"%s   %s" % [h.symbol,h.name],23,GOLD)
+  var portrait := _label(p,"%s   %s  •  %s" % [h.symbol,h.name,h.role],20,GOLD)
   portrait.add_theme_color_override("font_shadow_color",Color("#77572b"))
   var line := HBoxContainer.new()
   p.add_child(line)
-  var text_value := "%s  %s\n%s • %s" % [h.symbol,h.name,h.faction,h.role]
+  var text_value := "%s  •  %s" % [h.faction,h.role]
   var info_column := VBoxContainer.new()
   info_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
   line.add_child(info_column)
@@ -512,32 +662,14 @@ func _show_heroes() -> void:
   mastery_button.disabled = int(hero_mastery[i]) >= 5 or gold < 150 * (int(hero_mastery[i]) + 1)
   mastery_button.pressed.connect(_upgrade_hero_mastery.bind(i))
   info_column.add_child(mastery_button)
-  var b := _button("✓" if party.has(i) else "+")
+  var b := _button("✓ В отряде" if party.has(i) else "+ Взять")
+  b.custom_minimum_size = Vector2(112,64)
+  b.size_flags_horizontal = Control.SIZE_SHRINK_END
+  b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+  b.add_theme_font_size_override("font_size",14)
   b.disabled = party.has(i) and party.size() <= 1
   b.pressed.connect(_toggle_hero.bind(i))
   line.add_child(b)
- var formation := _panel()
- _label(formation,"ПОСТРОЕНИЕ ОТРЯДА",18,GOLD)
- _label(formation,"Первые два героя принимают основной удар.",14,MUTED)
- for i in range(FORMATIONS.size()):
-  var form_button := _button("Построение %d%s" % [i+1," ✓" if formation_index == i else ""])
-  form_button.pressed.connect(_set_formation.bind(i))
-  formation.add_child(form_button)
- var talents_button := _button("ТАЛАНТЫ ОТРЯДА")
- talents_button.pressed.connect(_navigate.bind("talents"))
- formation.add_child(talents_button)
- var upgrade := _panel()
- _label(upgrade,"ОБУЧЕНИЕ ГЕРОЕВ",20,GOLD)
- var cost := 100 * level
- _label(upgrade,"Уровень отряда: %d • Цена: %d золота" % [level,cost],17)
- _label(upgrade,"Следующий уровень: +15 HP и +3 атаки каждому герою",14,Color("#8de4b9"))
- var equipment_button := _button("СНАРЯЖЕНИЕ ГЕРОЕВ")
- equipment_button.pressed.connect(_navigate.bind("equipment"))
- upgrade.add_child(equipment_button)
- var up := _button("⬆  УЛУЧШИТЬ ОТРЯД")
- up.disabled = gold < cost
- up.pressed.connect(_upgrade)
- upgrade.add_child(up)
 
 func _upgrade_hero_mastery(hero_id: int) -> void:
  if hero_id < 0 or hero_id >= HEROES.size():
@@ -1197,7 +1329,7 @@ func _show_settings() -> void:
 func _toggle_sound() -> void:
  sound_enabled = not sound_enabled
  _save_data()
- _navigate("settings")
+ _navigate("preferences")
 
 func _save_data() -> void:
  var payload := JSON.stringify({"version":SAVE_VERSION,"gold":gold,"level":level,"chapter":chapter,"stage":stage,"party":party,"last_claim":last_claim,"battle_wins":battle_wins,"quests_claimed":quests_claimed,"vip_expires_at":vip_expires_at,"vip_trial_claimed":vip_trial_claimed,"sound_enabled":sound_enabled,"expedition_start":expedition_start,"expedition_region":expedition_region,"expedition_claims":expedition_claims,"relics":relics,"best_chapter":best_chapter,"best_streak":best_streak,"current_streak":current_streak,"tutorial_seen":tutorial_seen,"completed_campaign":completed_campaign,"owned_equipment":owned_equipment,"equipped":equipped,"boss_kills":boss_kills,"daily_day":daily_day,"daily_wins":daily_wins,"daily_claimed":daily_claimed,"achievement_claims":achievement_claims,"reduced_effects":reduced_effects,"formation_index":formation_index,"talent_points":talent_points,"battle_history":battle_history,"discovered_bosses":discovered_bosses,"claimed_region_rewards":claimed_region_rewards,"accessibility_large_text":accessibility_large_text,"expedition_total_gold":expedition_total_gold,"codex_seen":codex_seen,"campaign_first_clear_rewards":campaign_first_clear_rewards,"loot_inventory":loot_inventory,"loot_total":loot_total,"regional_wins":regional_wins,"regional_contracts_claimed":regional_contracts_claimed,"forge_level":forge_level,"hero_mastery":hero_mastery,"region_affinity":region_affinity,"equipment_reforges":equipment_reforges})
@@ -1382,6 +1514,9 @@ func _equipment_bonus(hero_id: int) -> Dictionary:
 
 func _show_equipment() -> void:
  var p := _panel()
+ var forge_button := _button("⚒ КУЗНИЦА И МАТЕРИАЛЫ")
+ forge_button.pressed.connect(_navigate.bind("loot"))
+ p.add_child(forge_button)
  _label(p,"◆  ИНВЕНТАРЬ И АРТЕФАКТЫ",24,GOLD)
  _label(p,"Покупайте предметы за игровое золото и назначайте их героям. Один предмет можно закрепить за одним героем.",15,MUTED)
  for i in range(EQUIPMENT.size()):
@@ -1486,7 +1621,7 @@ func _claim_achievement(index: int, goal: int) -> void:
 func _toggle_effects() -> void:
  reduced_effects = not reduced_effects
  _save_data()
- _navigate("settings")
+ _navigate("preferences")
 
 # v1.7 Formation, v1.8 Talents, v1.9 Battle journal, v2.0 Bestiary,
 # v2.1 Codex, v2.2 Region rewards, v2.3 Accessibility, v2.4 Expedition ledger.
@@ -1569,4 +1704,4 @@ func _claim_region_reward(region_id: int) -> void:
 func _toggle_large_text() -> void:
  accessibility_large_text = not accessibility_large_text
  _save_data()
- _navigate("settings")
+ _navigate("preferences")
