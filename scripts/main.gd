@@ -69,6 +69,8 @@ const SCREEN_TITLES := {
 }
 const PRIMARY_SCREENS := ["map","heroes","battle","equipment","settings"]
 var nav_history: Array[String] = []
+var equipment_filter := "Все"
+var equipment_target_hero := 0
 var is_navigating_back := false
 var scroll_view: ScrollContainer
 var body: VBoxContainer
@@ -1512,40 +1514,93 @@ func _equipment_bonus(hero_id: int) -> Dictionary:
   result.hp = int(EQUIPMENT[item_id].hp) + int(equipment_reforges[item_id]) * 8
  return result
 
+func _set_equipment_filter(value: String) -> void:
+ if value not in ["Все","Оружие","Броня","Реликвия"]:
+  return
+ equipment_filter = value
+ _navigate("equipment")
+
+func _set_equipment_target_hero(hero_id: int) -> void:
+ if not party.has(hero_id):
+  return
+ equipment_target_hero = hero_id
+ _navigate("equipment")
+
 func _show_equipment() -> void:
- var p := _panel()
+ var top := _panel()
+ _label(top,"◆  АРСЕНАЛ ХРАНИТЕЛЕЙ",23,GOLD)
+ _label(top,"Куплено %d из %d • Золото: %d" % [owned_equipment.size(),EQUIPMENT.size(),gold],16,MUTED)
+ _label(top,"Выберите героя, затем предмет. Один предмет может принадлежать только одному герою.",14,MUTED)
  var forge_button := _button("⚒ КУЗНИЦА И МАТЕРИАЛЫ")
  forge_button.pressed.connect(_navigate.bind("loot"))
- p.add_child(forge_button)
- _label(p,"◆  ИНВЕНТАРЬ И АРТЕФАКТЫ",24,GOLD)
- _label(p,"Покупайте предметы за игровое золото и назначайте их героям. Один предмет можно закрепить за одним героем.",15,MUTED)
+ top.add_child(forge_button)
+ if not party.has(equipment_target_hero):
+  equipment_target_hero = int(party[0]) if not party.is_empty() else 0
+ var select := _panel()
+ _label(select,"КОМУ ПОДОБРАТЬ СНАРЯЖЕНИЕ?",17,GOLD)
+ var target_picker := OptionButton.new()
+ target_picker.custom_minimum_size.y = 56
+ for hero_id in party:
+  target_picker.add_item(str(HEROES[hero_id].name),hero_id)
+  if hero_id == equipment_target_hero:
+   target_picker.select(target_picker.item_count-1)
+ target_picker.item_selected.connect(func(index: int): _set_equipment_target_hero(target_picker.get_item_id(index)))
+ select.add_child(target_picker)
+ var current_item := int(equipped.get(str(equipment_target_hero),-1))
+ _label(select,"Надето: %s" % [str(EQUIPMENT[current_item].name) if current_item >= 0 and current_item < EQUIPMENT.size() else "ничего"],15,GOLD)
+ var filter_panel := _panel()
+ _label(filter_panel,"КАТЕГОРИИ",17,GOLD)
+ var filters := GridContainer.new()
+ filters.columns = 4
+ filters.add_theme_constant_override("h_separation",6)
+ filter_panel.add_child(filters)
+ for category in ["Все","Оружие","Броня","Реликвия"]:
+  var filter_button := _button(category)
+  filter_button.custom_minimum_size.y = 50
+  filter_button.add_theme_font_size_override("font_size",12)
+  filter_button.add_theme_stylebox_override("normal",_ui_box(Color("#65482e") if equipment_filter == category else Color("#263149"),GOLD if equipment_filter == category else Color("#626b7c"),10))
+  filter_button.pressed.connect(_set_equipment_filter.bind(category))
+  filters.add_child(filter_button)
+ var displayed := 0
  for i in range(EQUIPMENT.size()):
   var item: Dictionary = EQUIPMENT[i]
+  if equipment_filter != "Все" and str(item.slot) != equipment_filter:
+   continue
+  displayed += 1
   var row := _panel()
-  _label(row,"%s · %s" % [item.name,item.slot],18,GOLD)
-  _label(row,"Атака +%d · Здоровье +%d" % [int(item.atk) + int(equipment_reforges[i]) * 2,int(item.hp) + int(equipment_reforges[i]) * 8],15)
-  _label(row,"Закалка: %d/%d" % [int(equipment_reforges[i]),EQUIPMENT_REFORGE_CAP],14,MUTED)
+  var heading := HBoxContainer.new()
+  row.add_child(heading)
+  var item_symbol := "⚔" if str(item.slot) == "Оружие" else "♜" if str(item.slot) == "Броня" else "✦"
+  var item_name := _label(heading,"%s  %s" % [item_symbol,item.name],18,GOLD)
+  item_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  _label(heading,"✓" if owned_equipment.has(i) else "◇",19,Color("#86d4ba") if owned_equipment.has(i) else MUTED)
+  _label(row,"%s  •  ATK +%d  •  HP +%d" % [item.slot,int(item.atk) + int(equipment_reforges[i])*2,int(item.hp) + int(equipment_reforges[i])*8],15,TEXT)
   if not owned_equipment.has(i):
-   var buy := _button("КУПИТЬ · %d золота" % item.cost)
+   var buy := _button("КУПИТЬ • %d ЗОЛОТА" % int(item.cost))
    buy.disabled = gold < int(item.cost)
    buy.pressed.connect(_buy_equipment.bind(i))
    row.add_child(buy)
   else:
-   var reforge_cost := 2 + int(equipment_reforges[i]) * 2
-   var reforge := _button("ЗАКАЛИТЬ · %d обычных осколков" % reforge_cost)
+   var reforge_cost := 2 + int(equipment_reforges[i])*2
+   _label(row,"Закалка %d/%d  •  Следующая: %d осколков" % [int(equipment_reforges[i]),EQUIPMENT_REFORGE_CAP,reforge_cost],13,MUTED)
+   var current := _equipment_bonus(equipment_target_hero)
+   var proposed_atk := int(item.atk) + int(equipment_reforges[i])*2
+   var proposed_hp := int(item.hp) + int(equipment_reforges[i])*8
+   var actions := HBoxContainer.new()
+   actions.add_theme_constant_override("separation",8)
+   row.add_child(actions)
+   var equip := _button("✓ Надето" if current_item == i else "НАДЕТЬ • ATK %+d / HP %+d" % [proposed_atk-int(current.atk),proposed_hp-int(current.hp)])
+   equip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+   equip.disabled = current_item == i
+   equip.pressed.connect(_equip_item.bind(i,equipment_target_hero))
+   actions.add_child(equip)
+   var reforge := _button("ЗАКАЛИТЬ")
    reforge.disabled = int(equipment_reforges[i]) >= EQUIPMENT_REFORGE_CAP or int(loot_inventory[0]) < reforge_cost
    reforge.pressed.connect(_reforge_equipment.bind(i))
-   row.add_child(reforge)
-   for hero_id in party:
-    var current := _equipment_bonus(hero_id)
-    var proposed_atk := int(item.atk) + int(equipment_reforges[i]) * 2
-    var proposed_hp := int(item.hp) + int(equipment_reforges[i]) * 8
-    var equip_label := "Надеть: %s · ΔATK %+d / ΔHP %+d" % [HEROES[hero_id].name, proposed_atk - int(current.atk), proposed_hp - int(current.hp)]
-    if int(equipped.get(str(hero_id),-1)) == i:
-     equip_label = "✓ %s" % HEROES[hero_id].name
-    var equip := _button(equip_label)
-    equip.pressed.connect(_equip_item.bind(i,hero_id))
-    row.add_child(equip)
+   actions.add_child(reforge)
+ if displayed == 0:
+  var empty := _panel()
+  _label(empty,"В этой категории пока нет предметов.",15,MUTED)
 
 func _reforge_equipment(item_id: int) -> void:
  if item_id < 0 or item_id >= EQUIPMENT.size() or not owned_equipment.has(item_id):
