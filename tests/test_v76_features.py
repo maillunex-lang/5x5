@@ -11,8 +11,8 @@ class V76Features(unittest.TestCase):
         self.assertIn('target["last_critical"] = critical_hit', MAIN)
         self.assertIn('bool(effect.get("critical",false))', ARENA)
     def test_gear_comparison(self):
-        self.assertIn('var current := _equipment_bonus(hero_id)', MAIN)
-        self.assertIn('ΔATK %+d / ΔHP %+d', MAIN)
+        self.assertIn('var current := _equipment_bonus(equipment_target_hero)', MAIN)
+        self.assertIn('ATK %+d / HP %+d', MAIN)
     def test_regional_weather(self):
         self.assertIn('region_index % 3 == 1', ARENA)
         self.assertIn('region_index % 4 == 2', ARENA)
